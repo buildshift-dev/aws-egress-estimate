@@ -1,0 +1,1029 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enterprise Architecture Network Diagram - Simplified</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            min-height: 100vh;
+            color: white;
+            overflow: hidden;
+        }
+
+        .header {
+            background: rgba(0,0,0,0.4);
+            padding: 15px 25px;
+            border-bottom: 2px solid rgba(255,255,255,0.2);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            backdrop-filter: blur(15px);
+            z-index: 1000;
+            position: relative;
+        }
+
+        .header h1 {
+            font-size: 1.4rem;
+            color: #3498db;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .controls {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+            font-weight: 500;
+        }
+
+        .btn:hover {
+            background: #2980b9;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(52,152,219,0.4);
+        }
+
+        .btn.secondary {
+            background: #95a5a6;
+        }
+
+        .btn.secondary:hover {
+            background: #7f8c8d;
+        }
+
+        #network-container {
+            width: 100vw;
+            height: calc(100vh - 70px);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .org-section {
+            position: absolute;
+            border: 3px solid;
+            border-radius: 15px;
+            background: rgba(255,255,255,0.05);
+            backdrop-filter: blur(10px);
+            cursor: pointer;
+            transition: all 0.4s ease;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            z-index: 10;
+        }
+
+        .org-section:hover {
+            transform: scale(1.02);
+            background: rgba(255,255,255,0.1);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+
+        .org-section.main-org {
+            border-color: #3498db;
+            left: 50px;
+            top: 80px;
+            width: 35%;
+            height: 45%;
+            padding: 10px;
+        }
+
+        .org-section.main-org .org-title {
+            font-size: 1.6rem;
+            margin-bottom: 10px;
+        }
+
+        .org-section.main-org .org-subtitle {
+            font-size: 0.85rem;
+            margin-bottom: 12px;
+        }
+
+        .org-section.main-org .org-stats {
+            margin: 5px;
+            padding: 8px;
+        }
+
+        .org-section.partner-org-1 {
+            border-color: #e74c3c;
+            right: 50px;
+            top: 80px;
+            width: 25%;
+            height: 45%;
+        }
+
+        .org-section.partner-org-2 {
+            border-color: #f39c12;
+            right: 50px;
+            bottom: 80px;
+            width: 30%;
+            height: 35%;
+            padding: 10px;
+        }
+
+        .org-section.partner-org-2 .org-title {
+            font-size: 1.6rem;
+            margin-bottom: 10px;
+        }
+
+        .org-section.partner-org-2 .org-subtitle {
+            font-size: 0.9rem;
+            margin-bottom: 15px;
+        }
+
+        .org-section.partner-org-2 .org-stats {
+            margin: 5px;
+            padding: 10px;
+        }
+
+        .org-section.hybrid-cloud {
+            border-color: #9b59b6;
+            left: 50px;
+            top: calc(45% + 100px);
+            width: 30%;
+            height: 35%;
+            background: rgba(155, 89, 182, 0.1) !important;
+            padding: 10px;
+        }
+
+        .org-section.hybrid-cloud .org-title {
+            font-size: 1.6rem;
+            margin-bottom: 10px;
+        }
+
+        .org-section.hybrid-cloud .org-subtitle {
+            font-size: 0.9rem;
+            margin-bottom: 15px;
+        }
+
+        .org-section.hybrid-cloud .org-stats {
+            margin: 5px;
+            padding: 10px;
+        }
+
+        .org-title {
+            font-size: 1.8rem;
+            font-weight: bold;
+            margin-bottom: 15px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+
+        .org-subtitle {
+            font-size: 1rem;
+            opacity: 0.9;
+            margin-bottom: 20px;
+            line-height: 1.4;
+        }
+
+        .org-stats {
+            background: rgba(0,0,0,0.3);
+            padding: 12px;
+            border-radius: 8px;
+            margin: 8px;
+        }
+
+        .org-stats .stat {
+            margin: 5px 0;
+            font-size: 0.9rem;
+        }
+
+        .org-stats .cost {
+            color: #f39c12;
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+
+        .floating-connections {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 15;
+        }
+
+        .connection-line {
+            stroke: #3498db;
+            stroke-width: 3;
+            stroke-dasharray: 10,5;
+            opacity: 0.7;
+            filter: drop-shadow(0 0 8px rgba(52,152,219,0.6));
+            animation: pulse 3s ease-in-out infinite alternate;
+        }
+
+        @keyframes pulse {
+            from { opacity: 0.4; stroke-width: 2; }
+            to { opacity: 0.8; stroke-width: 4; }
+        }
+
+        /* Modal styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0,0,0,0.9);
+            backdrop-filter: blur(8px);
+            z-index: 2000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            width: 90vw;
+            height: 85vh;
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            border-radius: 15px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+            border: 2px solid rgba(255,255,255,0.2);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .modal-header {
+            background: rgba(0,0,0,0.4);
+            padding: 20px 30px;
+            border-bottom: 2px solid rgba(255,255,255,0.2);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-title {
+            color: #3498db;
+            font-size: 1.5rem;
+            margin: 0;
+        }
+
+        .modal-close {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            font-size: 1.5rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .modal-close:hover {
+            background: #c0392b;
+            transform: scale(1.1);
+        }
+
+        .modal-body {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .legend {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.9);
+            backdrop-filter: blur(15px);
+            border-radius: 10px;
+            padding: 15px;
+            border: 2px solid rgba(255,255,255,0.2);
+            max-width: 280px;
+            z-index: 100;
+            text-align: center;
+        }
+
+        .legend h4 {
+            color: #3498db;
+            margin-bottom: 10px;
+            font-size: 1rem;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+            font-size: 0.85rem;
+            text-align: left;
+        }
+
+        .legend-color {
+            width: 16px;
+            height: 16px;
+            border-radius: 4px;
+            margin-right: 10px;
+            border: 1px solid rgba(255,255,255,0.3);
+        }
+
+        /* Network diagram styles */
+        .node {
+            cursor: pointer;
+            stroke-width: 2px;
+            filter: drop-shadow(0 4px 8px rgba(0,0,0,0.3));
+            transition: all 0.3s ease;
+        }
+
+        .node:hover {
+            filter: drop-shadow(0 6px 16px rgba(0,0,0,0.5));
+            transform: scale(1.15);
+        }
+
+        .node.highlighted {
+            stroke: #f39c12 !important;
+            stroke-width: 4px;
+            filter: drop-shadow(0 0 20px rgba(243,156,18,0.8));
+        }
+
+        .node.dragging {
+            stroke: #3498db !important;
+            stroke-width: 5px;
+            filter: drop-shadow(0 0 15px rgba(52,152,219,0.8)) brightness(1.3);
+            transition: none;
+            cursor: grabbing;
+        }
+
+        .link {
+            stroke-opacity: 0.7;
+            stroke-width: 2px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .link:hover {
+            stroke-opacity: 1;
+            stroke-width: 3px;
+        }
+
+        .link.highlighted {
+            stroke: #f39c12 !important;
+            stroke-width: 5px;
+            stroke-opacity: 1;
+            filter: drop-shadow(0 0 10px rgba(243,156,18,0.8));
+        }
+
+        .node-label {
+            font-family: 'Segoe UI', sans-serif;
+            font-size: 10px;
+            fill: white;
+            text-anchor: middle;
+            dominant-baseline: central;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+            pointer-events: none;
+            user-select: none;
+        }
+
+        .tooltip {
+            position: absolute;
+            background: rgba(0,0,0,0.95);
+            color: white;
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 13px;
+            line-height: 1.4;
+            z-index: 3000;
+            pointer-events: none;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(255,255,255,0.2);
+            max-width: 320px;
+            opacity: 0;
+            transition: opacity 0.2s ease, transform 0.2s ease;
+            transform: translateY(-5px);
+        }
+
+        .tooltip.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .tooltip h4 {
+            color: #3498db;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        .tooltip .cost {
+            color: #f39c12;
+            font-weight: bold;
+            margin-top: 8px;
+        }
+
+        .zoom-controls {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            z-index: 2500;
+        }
+
+        .zoom-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: none;
+            background: rgba(52,152,219,0.8);
+            color: white;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(255,255,255,0.3);
+        }
+
+        .zoom-btn:hover {
+            background: rgba(41,128,185,1);
+            transform: scale(1.1);
+        }
+
+        @media (max-width: 1024px) {
+            .org-section {
+                position: relative;
+                width: 90% !important;
+                height: 200px !important;
+                margin: 20px auto;
+                left: auto !important;
+                right: auto !important;
+                top: auto !important;
+                bottom: auto !important;
+            }
+
+            #network-container {
+                height: auto;
+                min-height: calc(100vh - 70px);
+                padding: 20px;
+                display: flex;
+                flex-direction: column;
+            }
+
+            .floating-connections {
+                display: none;
+            }
+
+            .legend {
+                position: relative;
+                margin: 20px auto;
+                max-width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🏗️ Enterprise Multi-Organization Architecture Overview - Simplified</h1>
+        <div class="controls">
+            <a href="index.html" class="btn secondary">← Cost Estimator</a>
+            <a href="aws-egress-report.html" class="btn secondary">📊 Strategic Report</a>
+        </div>
+    </div>
+
+    <div id="network-container">
+        <!-- Main Organization -->
+        <div class="org-section main-org" onclick="showOrgDetails('main-org')">
+            <div class="org-title" style="color: #3498db;">🏢 Main Organization</div>
+            <div class="org-subtitle">
+                Simplified multi-region architecture<br>
+                with clear connectivity patterns
+            </div>
+            <div class="org-stats">
+                <div class="stat">📊 <strong>4 Core Components</strong> - ultra-clean</div>
+                <div class="stat">🔗 <strong>Star Architecture</strong> from global core</div>
+                <div class="stat">💾 <strong>130,000 GB/month</strong> total traffic</div>
+                <div class="cost">💰 $2,900/month consolidated costs</div>
+            </div>
+        </div>
+
+        <!-- Partner Organization A -->
+        <div class="org-section partner-org-1" onclick="showOrgDetails('partner-org-1')">
+            <div class="org-title" style="color: #e74c3c;">🤝 Partner Org A</div>
+            <div class="org-subtitle">
+                Financial services and<br>
+                analytics integration
+            </div>
+            <div class="org-stats">
+                <div class="stat">🏦 <strong>FinTech Core Hub</strong></div>
+                <div class="stat">📈 <strong>Payment + Analytics</strong></div>
+                <div class="stat">💾 <strong>18,000 GB/month</strong></div>
+                <div class="cost">💰 $950/month total costs</div>
+            </div>
+        </div>
+
+        <!-- Partner Organization B -->
+        <div class="org-section partner-org-2" onclick="showOrgDetails('partner-org-2')">
+            <div class="org-title" style="color: #f39c12;">🚚 Partner Org B</div>
+            <div class="org-subtitle">
+                Supply chain and<br>
+                logistics integration
+            </div>
+            <div class="org-stats">
+                <div class="stat">📦 <strong>Logistics Core</strong></div>
+                <div class="stat">🔗 <strong>Fulfillment + Tracking</strong></div>
+                <div class="stat">💾 <strong>9,500 GB/month</strong></div>
+                <div class="cost">💰 $500/month total costs</div>
+            </div>
+        </div>
+
+        <!-- Hybrid Cloud Infrastructure -->
+        <div class="org-section hybrid-cloud" onclick="showOrgDetails('hybrid-cloud')">
+            <div class="org-title" style="color: #9b59b6;">☁️ Hybrid Cloud</div>
+            <div class="org-subtitle">
+                On-premises integration<br>
+                and connectivity
+            </div>
+            <div class="org-stats">
+                <div class="stat">🏢 <strong>Enterprise Datacenter</strong></div>
+                <div class="stat">🌐 <strong>Cloud Gateway Bridge</strong></div>
+                <div class="stat">💾 <strong>30,000 GB/month</strong></div>
+                <div class="cost">💰 $1,200/month hybrid costs</div>
+            </div>
+        </div>
+
+        <!-- Floating connection lines -->
+        <svg class="floating-connections">
+            <defs>
+                <marker id="arrowhead-red" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                    <polygon points="0 0, 10 3.5, 0 7" fill="#e74c3c" />
+                </marker>
+                <marker id="arrowhead-orange" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                    <polygon points="0 0, 10 3.5, 0 7" fill="#f39c12" />
+                </marker>
+                <marker id="arrowhead-purple" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                    <polygon points="0 0, 10 3.5, 0 7" fill="#9b59b6" />
+                </marker>
+                <marker id="arrowhead-gray" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                    <polygon points="0 0, 10 3.5, 0 7" fill="#95a5a6" />
+                </marker>
+            </defs>
+            <!-- Main to Partner A -->
+            <line class="connection-line" x1="42%" y1="25%" x2="70%" y2="20%" stroke="#e74c3c" marker-end="url(#arrowhead-red)" />
+            <!-- Main to Partner B -->
+            <line class="connection-line" x1="42%" y1="35%" x2="65%" y2="78%" stroke="#f39c12" marker-end="url(#arrowhead-orange)" />
+            <!-- Main to Hybrid -->
+            <line class="connection-line" x1="25%" y1="50%" x2="25%" y2="68%" stroke="#9b59b6" marker-end="url(#arrowhead-purple)" />
+            <!-- Partner A to Partner B -->
+            <line class="connection-line" x1="85%" y1="42%" x2="85%" y2="65%" stroke="#95a5a6" stroke-dasharray="5,5" marker-end="url(#arrowhead-gray)" />
+        </svg>
+    </div>
+
+    <!-- Modal for detailed views -->
+    <div class="modal-overlay" id="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title" id="modal-title">Organization Details</h3>
+                <button class="modal-close" onclick="closeModal()">×</button>
+            </div>
+            <div class="modal-body">
+                <svg width="100%" height="100%" id="modal-svg"></svg>
+            </div>
+        </div>
+    </div>
+
+    <div class="legend">
+        <h4>🎯 Click any section to explore:</h4>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #3498db;"></div>
+            <span><strong>Main Organization:</strong> Multi-region AWS accounts</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #e74c3c;"></div>
+            <span><strong>Partner Org A:</strong> Financial & analytics services</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #f39c12;"></div>
+            <span><strong>Partner Org B:</strong> Logistics & supply chain</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #9b59b6;"></div>
+            <span><strong>Hybrid Cloud:</strong> On-premises integration</span>
+        </div>
+    </div>
+
+    <div class="zoom-controls" id="zoom-controls" style="display: none;">
+        <button class="zoom-btn" onclick="zoomIn()">+</button>
+        <button class="zoom-btn" onclick="zoomOut()">−</button>
+        <button class="zoom-btn" onclick="resetZoom()" style="font-size: 14px;">⌂</button>
+    </div>
+
+    <div class="tooltip" id="tooltip"></div>
+
+    <script>
+        // Simplified data for each organization with fewer, connected nodes
+        const organizationData = {
+            'main-org': {
+                title: '🏢 Main Organization - Maximum Clean',
+                description: 'Ultra-minimal with just 4 nodes',
+                nodes: [
+                    { id: 'global-core', name: 'Global Core', type: 'core', region: 'Multi-Region', cost: '$1,200/month', traffic: '50,000 GB', x: 400, y: 300 },
+                    { id: 'production-services', name: 'Production Services', type: 'production', region: 'Global', cost: '$800/month', traffic: '35,000 GB', x: 250, y: 200 },
+                    { id: 'client-platform', name: 'Client Platform', type: 'client', region: 'Global', cost: '$600/month', traffic: '40,000 GB', x: 550, y: 200 },
+                    { id: 'security-layer', name: 'Security Layer', type: 'security', region: 'Global', cost: '$300/month', traffic: '5,000 GB', x: 400, y: 450 }
+                ],
+                links: [
+                    { source: 'global-core', target: 'production-services', cost: '$80/month', type: 'core-flow' },
+                    { source: 'global-core', target: 'client-platform', cost: '$90/month', type: 'core-flow' },
+                    { source: 'global-core', target: 'security-layer', cost: '$40/month', type: 'security-flow' }
+                ]
+            },
+            
+            'partner-org-1': {
+                title: '🤝 Partner Organization A - Financial Services',
+                description: 'Maximum clean with 3 nodes',
+                nodes: [
+                    { id: 'fintech-core', name: 'FinTech Core', type: 'gateway', region: 'Financial', cost: '$400/month', traffic: '8,000 GB', x: 400, y: 250 },
+                    { id: 'payment-engine', name: 'Payment Engine', type: 'financial', region: 'Processing', cost: '$300/month', traffic: '6,000 GB', x: 250, y: 400 },
+                    { id: 'data-analytics', name: 'Data Analytics', type: 'analytics', region: 'Intelligence', cost: '$250/month', traffic: '4,000 GB', x: 550, y: 400 }
+                ],
+                links: [
+                    { source: 'fintech-core', target: 'payment-engine', cost: '$50/month', type: 'financial-flow' },
+                    { source: 'fintech-core', target: 'data-analytics', cost: '$40/month', type: 'financial-flow' }
+                ]
+            },
+            
+            'partner-org-2': {
+                title: '🚚 Partner Organization B - Supply Chain',
+                description: 'Ultra-clean supply chain',
+                nodes: [
+                    { id: 'logistics-core', name: 'Logistics Core', type: 'logistics', region: 'Supply Chain', cost: '$200/month', traffic: '4,000 GB', x: 400, y: 250 },
+                    { id: 'fulfillment', name: 'Fulfillment Center', type: 'warehouse', region: 'Operations', cost: '$180/month', traffic: '3,500 GB', x: 300, y: 400 },
+                    { id: 'tracking-system', name: 'Tracking System', type: 'api', region: 'Visibility', cost: '$120/month', traffic: '2,000 GB', x: 500, y: 400 }
+                ],
+                links: [
+                    { source: 'logistics-core', target: 'fulfillment', cost: '$35/month', type: 'logistics-flow' },
+                    { source: 'logistics-core', target: 'tracking-system', cost: '$25/month', type: 'logistics-flow' }
+                ]
+            },
+            
+            'hybrid-cloud': {
+                title: '☁️ Hybrid Cloud Infrastructure',
+                description: 'Maximum clean hybrid',
+                nodes: [
+                    { id: 'enterprise-datacenter', name: 'Enterprise Datacenter', type: 'onprem', region: 'On-Premises', cost: '$400/month', traffic: '8,000 GB', x: 300, y: 250 },
+                    { id: 'cloud-gateway', name: 'Cloud Gateway', type: 'network', region: 'Hybrid Bridge', cost: '$300/month', traffic: '10,000 GB', x: 400, y: 350 },
+                    { id: 'aws-platform', name: 'AWS Platform', type: 'gateway', region: 'Cloud Services', cost: '$500/month', traffic: '12,000 GB', x: 500, y: 450 }
+                ],
+                links: [
+                    { source: 'enterprise-datacenter', target: 'cloud-gateway', cost: '$80/month', type: 'hybrid-link' },
+                    { source: 'cloud-gateway', target: 'aws-platform', cost: '$100/month', type: 'cloud-link' }
+                ]
+            }
+        };
+
+        // Simplified color schemes
+        const colors = {
+            'core': '#3498db',
+            'production': '#2ecc71', 
+            'client': '#e74c3c',
+            'security': '#9b59b6',
+            'gateway': '#f39c12',
+            'financial': '#e67e22',
+            'analytics': '#1abc9c',
+            'logistics': '#f39c12',
+            'warehouse': '#d35400',
+            'api': '#95a5a6',
+            'onprem': '#8e44ad',
+            'network': '#34495e'
+        };
+
+        const linkColors = {
+            'core-flow': '#3498db',
+            'security-flow': '#9b59b6',
+            'financial-flow': '#f39c12',
+            'logistics-flow': '#d35400',
+            'hybrid-link': '#e67e22',
+            'cloud-link': '#8e44ad'
+        };
+
+        let currentModal = null;
+        let modalSvg = null;
+        let modalSimulation = null;
+
+        // Show organization details in modal
+        function showOrgDetails(orgId) {
+            const orgData = organizationData[orgId];
+            if (!orgData) return;
+
+            const modal = document.getElementById('modal');
+            const title = document.getElementById('modal-title');
+            title.textContent = orgData.title;
+
+            currentModal = orgId;
+
+            // Clear previous content
+            const svg = d3.select('#modal-svg');
+            svg.selectAll('*').remove();
+
+            // Set up SVG dimensions
+            const width = svg.node().clientWidth || 800;
+            const height = svg.node().clientHeight || 600;
+
+            // Main container
+            const container = svg.append('g');
+
+            // Ultra-optimized simulation for maximum smoothness
+            modalSimulation = d3.forceSimulation(orgData.nodes)
+                .force('link', d3.forceLink(orgData.links).id(d => d.id).distance(180).strength(0.2))
+                .force('charge', d3.forceManyBody().strength(-200).distanceMax(250))
+                .force('center', d3.forceCenter(width/2, height/2).strength(0.03))
+                .force('collision', d3.forceCollide().radius(45).strength(0.5))
+                .alphaDecay(0.5)
+                .velocityDecay(0.99);
+
+            // Create links
+            const links = container.append('g')
+                .selectAll('line')
+                .data(orgData.links)
+                .join('line')
+                .attr('class', 'link')
+                .attr('stroke', d => linkColors[d.type] || '#95a5a6')
+                .attr('stroke-width', 2);
+
+            // Create nodes
+            const nodes = container.append('g')
+                .selectAll('circle')
+                .data(orgData.nodes)
+                .join('circle')
+                .attr('class', 'node')
+                .attr('r', 20)
+                .attr('fill', d => colors[d.type] || '#95a5a6')
+                .attr('stroke', '#fff')
+                .call(d3.drag()
+                    .on('start', dragstarted)
+                    .on('drag', dragged)
+                    .on('end', dragended));
+
+            // Create node labels
+            const nodeLabels = container.append('g')
+                .selectAll('text')
+                .data(orgData.nodes)
+                .join('text')
+                .attr('class', 'node-label')
+                .text(d => d.name)
+                .style('font-size', '10px');
+
+            // Add event handlers
+            nodes.on('click', handleNodeClick)
+                .on('mouseover', handleMouseOver)
+                .on('mouseout', handleMouseOut);
+
+            links.on('click', handleLinkClick)
+                .on('mouseover', handleLinkMouseOver)
+                .on('mouseout', handleMouseOut);
+
+            // Update positions on simulation tick
+            modalSimulation.on('tick', () => {
+                links
+                    .attr('x1', d => d.source.x)
+                    .attr('y1', d => d.source.y)
+                    .attr('x2', d => d.target.x)
+                    .attr('y2', d => d.target.y);
+
+                nodes
+                    .attr('cx', d => d.x)
+                    .attr('cy', d => d.y);
+
+                nodeLabels
+                    .attr('x', d => d.x)
+                    .attr('y', d => d.y + 30);
+            });
+
+            // Immediate stop for ultra-clean result
+            setTimeout(() => {
+                if (modalSimulation) {
+                    modalSimulation.alphaTarget(0).restart();
+                    setTimeout(() => {
+                        if (modalSimulation) modalSimulation.stop();
+                    }, 500);
+                }
+            }, 800);
+
+            modal.style.display = 'flex';
+            document.getElementById('zoom-controls').style.display = 'flex';
+        }
+
+        // Event handlers
+        function handleNodeClick(event, d) {
+            clearHighlights();
+            highlightNode(d);
+            event.stopPropagation();
+        }
+
+        function handleLinkClick(event, d) {
+            clearHighlights();
+            highlightLink(d);
+            event.stopPropagation();
+        }
+
+        let isDragging = false;
+        let tooltipTimeout = null;
+        let tooltipDebounce = null;
+
+        function handleMouseOver(event, d) {
+            if (!isDragging) {
+                if (tooltipTimeout) {
+                    clearTimeout(tooltipTimeout);
+                }
+                if (tooltipDebounce) {
+                    clearTimeout(tooltipDebounce);
+                }
+                tooltipDebounce = setTimeout(() => {
+                    if (!isDragging) {
+                        showTooltip(event, d);
+                    }
+                }, 200);
+            }
+        }
+
+        function handleLinkMouseOver(event, d) {
+            if (!isDragging) {
+                if (tooltipTimeout) {
+                    clearTimeout(tooltipTimeout);
+                }
+                if (tooltipDebounce) {
+                    clearTimeout(tooltipDebounce);
+                }
+                tooltipDebounce = setTimeout(() => {
+                    if (!isDragging) {
+                        showTooltip(event, d, 'link');
+                    }
+                }, 200);
+            }
+        }
+
+        function handleMouseOut() {
+            if (tooltipTimeout) {
+                clearTimeout(tooltipTimeout);
+                tooltipTimeout = null;
+            }
+            if (tooltipDebounce) {
+                clearTimeout(tooltipDebounce);
+                tooltipDebounce = null;
+            }
+            hideTooltip();
+        }
+
+        function clearHighlights() {
+            if (!modalSvg) return;
+            modalSvg.selectAll('.node').classed('highlighted', false);
+            modalSvg.selectAll('.link').classed('highlighted', false);
+        }
+
+        function highlightNode(selectedNode) {
+            if (!modalSvg) return;
+            modalSvg.selectAll('.node').classed('highlighted', d => d.id === selectedNode.id);
+            modalSvg.selectAll('.link').classed('highlighted', d => 
+                d.source.id === selectedNode.id || d.target.id === selectedNode.id
+            );
+        }
+
+        function highlightLink(selectedLink) {
+            if (!modalSvg) return;
+            modalSvg.selectAll('.link').classed('highlighted', d => d === selectedLink);
+            modalSvg.selectAll('.node').classed('highlighted', d => 
+                d.id === selectedLink.source.id || d.id === selectedLink.target.id
+            );
+        }
+
+        function showTooltip(event, d, type = 'node') {
+            const tooltip = document.getElementById('tooltip');
+            const content = type === 'link' ? 
+                `<h4>${d.source.name} → ${d.target.name}</h4>
+                 <p><strong>Type:</strong> ${d.type.replace('-', ' ')}</p>
+                 <div class="cost">Cost: ${d.cost}</div>` :
+                `<h4>${d.name}</h4>
+                 <p><strong>Region:</strong> ${d.region}</p>
+                 <p><strong>Traffic:</strong> ${d.traffic}</p>
+                 <div class="cost">Cost: ${d.cost}</div>`;
+            
+            tooltip.innerHTML = content;
+            tooltip.classList.add('visible');
+            tooltip.style.left = (event.pageX + 10) + 'px';
+            tooltip.style.top = (event.pageY - 10) + 'px';
+        }
+
+        function hideTooltip() {
+            document.getElementById('tooltip').classList.remove('visible');
+        }
+
+        // Drag functions
+        function dragstarted(event, d) {
+            isDragging = true;
+            
+            if (tooltipTimeout) {
+                clearTimeout(tooltipTimeout);
+                tooltipTimeout = null;
+            }
+            if (tooltipDebounce) {
+                clearTimeout(tooltipDebounce);
+                tooltipDebounce = null;
+            }
+            
+            hideTooltip();
+            document.getElementById('tooltip').style.pointerEvents = 'none';
+            
+            if (!event.active && modalSimulation) modalSimulation.alphaTarget(0.02).restart();
+            d.fx = d.x;
+            d.fy = d.y;
+            
+            d3.select(this).classed('dragging', true);
+        }
+
+        function dragged(event, d) {
+            d.fx = event.x;
+            d.fy = event.y;
+        }
+
+        function dragended(event, d) {
+            isDragging = false;
+            
+            document.getElementById('tooltip').style.pointerEvents = 'auto';
+            
+            if (!event.active && modalSimulation) {
+                modalSimulation.alphaTarget(0);
+                setTimeout(() => {
+                    if (modalSimulation) modalSimulation.stop();
+                }, 1000);
+            }
+            d.fx = null;
+            d.fy = null;
+            
+            d3.select(this).classed('dragging', false);
+        }
+
+        // Modal controls
+        function closeModal() {
+            document.getElementById('modal').style.display = 'none';
+            document.getElementById('zoom-controls').style.display = 'none';
+            if (modalSimulation) {
+                modalSimulation.stop();
+                modalSimulation = null;
+            }
+            modalSvg = null;
+            currentModal = null;
+        }
+
+        // Zoom controls
+        let currentZoom = 1;
+        
+        function zoomIn() {
+            currentZoom *= 1.2;
+            applyZoom();
+        }
+        
+        function zoomOut() {
+            currentZoom /= 1.2;
+            applyZoom();
+        }
+        
+        function resetZoom() {
+            currentZoom = 1;
+            applyZoom();
+        }
+        
+        function applyZoom() {
+            const svg = d3.select('#modal-svg');
+            const container = svg.select('g');
+            container.attr('transform', `scale(${currentZoom})`);
+        }
+
+        // Close modal on escape key
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape' && currentModal) {
+                closeModal();
+            }
+        });
+
+        // Close modal on background click
+        document.getElementById('modal').addEventListener('click', function(event) {
+            if (event.target === this) {
+                closeModal();
+            }
+        });
+    </script>
+</body>
+</html>

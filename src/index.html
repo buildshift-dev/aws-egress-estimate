@@ -1,0 +1,1794 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AWS Egress Cost Estimator</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+            animation: fadeIn 1s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .header {
+            background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            animation: slideInDown 1s ease-out 0.5s both;
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+            animation: slideInDown 1s ease-out 0.7s both;
+        }
+
+        @keyframes slideInDown {
+            from { opacity: 0; transform: translateY(-50px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 30px;
+            padding: 30px;
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .architecture-section {
+            grid-column: 1 / -1;
+            margin-top: 20px;
+        }
+
+        .architecture-tabs {
+            display: flex;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 2px solid #dee2e6;
+        }
+
+        .arch-tab-button {
+            flex: 1;
+            padding: 12px;
+            background: #f8f9fa;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            font-size: 0.9rem;
+        }
+
+        .arch-tab-button.active {
+            background: #3498db;
+            color: white;
+        }
+
+        .architecture-content {
+            display: none;
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 25px;
+            border: 1px solid #e9ecef;
+            overflow: visible;
+        }
+
+        .architecture-content.active {
+            display: block;
+            animation: slideIn 0.5s ease-out;
+        }
+
+        .architecture-diagram {
+            background: white;
+            border-radius: 8px;
+            padding: 60px 20px 20px 20px;
+            margin: 50px 0 20px 0;
+            border: 2px solid #dee2e6;
+            text-align: center;
+            min-height: 300px;
+            position: relative;
+            overflow: visible;
+        }
+
+        .aws-component {
+            display: inline-block;
+            padding: 10px 15px;
+            margin: 5px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            position: relative;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .aws-component:hover {
+            transform: scale(1.1);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+            z-index: 10;
+        }
+
+        .aws-component::before {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 130%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.95);
+            color: white;
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            font-weight: normal;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+            z-index: 1000;
+            width: 280px;
+            max-width: 280px;
+            white-space: normal;
+            text-align: left;
+            line-height: 1.4;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .aws-component:hover::before {
+            opacity: 1;
+        }
+
+        .aws-component::after {
+            content: '';
+            position: absolute;
+            bottom: 120%;
+            left: 50%;
+            transform: translateX(-50%);
+            margin-left: -6px;
+            width: 0;
+            height: 0;
+            border-top: 6px solid rgba(0,0,0,0.95);
+            border-left: 6px solid transparent;
+            border-right: 6px solid transparent;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+            z-index: 999;
+        }
+
+        .aws-component:hover::after {
+            opacity: 1;
+        }
+
+        .account-a { background: #2c3e50; color: white; }
+        .account-b { background: #3498db; color: white; }
+        .client-account { background: #27ae60; color: white; }
+        .internet { background: #e74c3c; color: white; }
+        .onprem { background: #8e44ad; color: white; }
+
+        .connection-line {
+            position: absolute;
+            background: #2c3e50;
+            height: 2px;
+            animation: drawLine 2s ease-out;
+        }
+
+        @keyframes drawLine {
+            from { width: 0; }
+            to { width: 100%; }
+        }
+
+        .cost-indicator {
+            position: absolute;
+            background: #2c3e50;
+            color: white;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            animation: bounce 2s infinite;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: 2px solid rgba(255,255,255,0.3);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+
+        .cost-indicator:hover {
+            transform: scale(1.2) translateY(-5px);
+            animation-play-state: paused;
+            background: #e55a2b;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.4);
+        }
+
+        .cost-indicator::before {
+            content: attr(data-explanation);
+            position: absolute;
+            bottom: 130%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.95);
+            color: white;
+            padding: 14px 18px;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            font-weight: normal;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+            z-index: 1001;
+            width: 300px;
+            max-width: 300px;
+            white-space: normal;
+            text-align: left;
+            line-height: 1.4;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,107,53,0.3);
+        }
+
+        .cost-indicator:hover::before {
+            opacity: 1;
+        }
+
+        .cost-indicator::after {
+            content: '';
+            position: absolute;
+            bottom: 120%;
+            left: 50%;
+            transform: translateX(-50%);
+            margin-left: -6px;
+            width: 0;
+            height: 0;
+            border-top: 6px solid rgba(0,0,0,0.95);
+            border-left: 6px solid transparent;
+            border-right: 6px solid transparent;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+            z-index: 1000;
+        }
+
+        .cost-indicator:hover::after {
+            opacity: 1;
+        }
+
+        @keyframes bounce {
+            0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
+            40% { transform: translateY(-10px); }
+            60% { transform: translateY(-5px); }
+        }
+
+        .connection-element {
+            position: relative;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .connection-element:hover {
+            transform: scale(1.05);
+            filter: brightness(1.2);
+        }
+
+        .connection-element::before {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 130%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.95);
+            color: white;
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            font-weight: normal;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+            z-index: 1000;
+            width: 290px;
+            max-width: 290px;
+            white-space: normal;
+            text-align: left;
+            line-height: 1.4;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .connection-element:hover::before {
+            opacity: 1;
+        }
+
+        .connection-element::after {
+            content: '';
+            position: absolute;
+            bottom: 120%;
+            left: 50%;
+            transform: translateX(-50%);
+            margin-left: -5px;
+            width: 0;
+            height: 0;
+            border-top: 5px solid rgba(0,0,0,0.95);
+            border-left: 5px solid transparent;
+            border-right: 5px solid transparent;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+            z-index: 999;
+        }
+
+        .connection-element:hover::after {
+            opacity: 1;
+        }
+
+        .panel {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 25px;
+            border: 1px solid #e9ecef;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .panel:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 30px rgba(0,0,0,0.1);
+        }
+
+        .panel h2 {
+            color: #2c3e50;
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+            border-bottom: 2px solid #2c3e50;
+            padding-bottom: 10px;
+        }
+
+        .form-group {
+            margin-bottom: 30px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #495057;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border-color 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .form-control:focus {
+            border-color: #2c3e50;
+            box-shadow: 0 0 0 3px rgba(255, 107, 53, 0.1);
+            outline: none;
+        }
+
+        .slider-container {
+            position: relative;
+            margin: 15px 0 40px 0;
+            padding-top: 10px;
+        }
+
+        .slider {
+            width: 100%;
+            height: 8px;
+            border-radius: 5px;
+            background: #ddd;
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        .slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #2c3e50;
+            cursor: pointer;
+            transition: transform 0.2s ease;
+        }
+
+        .slider::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+
+        .slider-value {
+            position: absolute;
+            top: 25px;
+            background: #2c3e50;
+            color: white;
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            pointer-events: none;
+            transform: translateX(-50%);
+            white-space: nowrap;
+            z-index: 10;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            border: 2px solid #2c3e50;
+        }
+
+        .slider-value::after {
+            content: '';
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            margin-left: -5px;
+            width: 0;
+            height: 0;
+            border-bottom: 5px solid #2c3e50;
+            border-left: 5px solid transparent;
+            border-right: 5px solid transparent;
+        }
+
+        .scenario-tabs {
+            display: flex;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 2px solid #dee2e6;
+        }
+
+        .tab-button {
+            flex: 1;
+            padding: 12px;
+            background: #f8f9fa;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .tab-button.active {
+            background: #2c3e50;
+            color: white;
+        }
+
+        .tab-content {
+            display: none;
+            animation: slideIn 0.5s ease-out;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        .results-panel {
+            background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+            color: white;
+            border-radius: 10px;
+            padding: 25px;
+            margin-top: 20px;
+        }
+
+        .cost-card {
+            background: rgba(255,255,255,0.1);
+            border-radius: 8px;
+            padding: 20px;
+            margin: 10px 0;
+            border: 1px solid rgba(255,255,255,0.2);
+            transition: transform 0.3s ease;
+        }
+
+        .cost-card:hover {
+            transform: scale(1.02);
+        }
+
+        .cost-value {
+            font-size: 2rem;
+            font-weight: bold;
+            margin-bottom: 5px;
+            animation: countUp 1s ease-out;
+        }
+
+        @keyframes countUp {
+            from { transform: scale(0.5); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+
+        .cost-label {
+            font-size: 0.9rem;
+            opacity: 0.8;
+        }
+
+        .breakdown-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        .breakdown-table th,
+        .breakdown-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid rgba(255,255,255,0.2);
+        }
+
+        .breakdown-table th {
+            background: rgba(255,255,255,0.1);
+            font-weight: 600;
+        }
+
+        .chart-container {
+            margin-top: 20px;
+            height: 300px;
+            position: relative;
+            background: rgba(255,255,255,0.1);
+            border-radius: 8px;
+            padding: 15px;
+        }
+
+        .chart-tabs {
+            display: flex;
+            margin-bottom: 15px;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+
+        .chart-tab-btn {
+            flex: 1;
+            padding: 8px 12px;
+            background: rgba(255,255,255,0.1);
+            border: none;
+            color: white;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+        }
+
+        .chart-tab-btn.active {
+            background: rgba(255,255,255,0.3);
+        }
+
+        .chart-content {
+            display: none;
+            height: 250px;
+        }
+
+        .chart-content.active {
+            display: block;
+        }
+
+        .pulse {
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+
+        .calculate-btn {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .calculate-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(255, 107, 53, 0.3);
+        }
+
+        .calculate-btn:active {
+            transform: translateY(0);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🌐 AWS Egress Cost Estimator</h1>
+            <p>Interactive tool to estimate data transfer costs for enterprise AWS architectures</p>
+        </div>
+
+        <div class="main-content">
+            <div class="panel">
+                <h2>📊 Configuration</h2>
+                
+                <div class="scenario-tabs">
+                    <button class="tab-button active" onclick="switchTab('basic')">Basic</button>
+                    <button class="tab-button" onclick="switchTab('enterprise')">Enterprise</button>
+                    <button class="tab-button" onclick="switchTab('hybrid')">Hybrid</button>
+                </div>
+
+                <div id="basic-tab" class="tab-content active">
+                    <div class="form-group">
+                        <label>Monthly Data Transfer to Internet (GB)</label>
+                        <div class="slider-container">
+                            <input type="range" class="slider" id="internetData" min="0" max="50000" value="500" oninput="updateSliderValue('internetData')">
+                            <div class="slider-value" id="internetData-value">500 GB</div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Inter-AZ Data Transfer (GB)</label>
+                        <div class="slider-container">
+                            <input type="range" class="slider" id="interAZ" min="0" max="25000" value="200" oninput="updateSliderValue('interAZ')">
+                            <div class="slider-value" id="interAZ-value">200 GB</div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Inter-Region Data Transfer (GB)</label>
+                        <div class="slider-container">
+                            <input type="range" class="slider" id="interRegion" min="0" max="10000" value="100" oninput="updateSliderValue('interRegion')">
+                            <div class="slider-value" id="interRegion-value">100 GB</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="enterprise-tab" class="tab-content">
+                    <div class="form-group">
+                        <label>Cross-Account Data Transfer (GB)</label>
+                        <div class="slider-container">
+                            <input type="range" class="slider" id="crossAccount" min="0" max="25000" value="800" oninput="updateSliderValue('crossAccount')">
+                            <div class="slider-value" id="crossAccount-value">800 GB</div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>VPC Peering Data Transfer (GB)</label>
+                        <div class="slider-container">
+                            <input type="range" class="slider" id="vpcPeering" min="0" max="15000" value="300" oninput="updateSliderValue('vpcPeering')">
+                            <div class="slider-value" id="vpcPeering-value">300 GB</div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Transit Gateway Data Transfer (GB)</label>
+                        <div class="slider-container">
+                            <input type="range" class="slider" id="transitGateway" min="0" max="20000" value="400" oninput="updateSliderValue('transitGateway')">
+                            <div class="slider-value" id="transitGateway-value">400 GB</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="hybrid-tab" class="tab-content">
+                    <div class="form-group">
+                        <label>Direct Connect Data Transfer (GB)</label>
+                        <div class="slider-container">
+                            <input type="range" class="slider" id="directConnect" min="0" max="40000" value="1000" oninput="updateSliderValue('directConnect')">
+                            <div class="slider-value" id="directConnect-value">1000 GB</div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>VPN Data Transfer (GB)</label>
+                        <div class="slider-container">
+                            <input type="range" class="slider" id="vpnTransfer" min="0" max="10000" value="200" oninput="updateSliderValue('vpnTransfer')">
+                            <div class="slider-value" id="vpnTransfer-value">200 GB</div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>PrivateLink Data Transfer (GB)</label>
+                        <div class="slider-container">
+                            <input type="range" class="slider" id="privateLink" min="0" max="15000" value="150" oninput="updateSliderValue('privateLink')">
+                            <div class="slider-value" id="privateLink-value">150 GB</div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>CloudFront Distribution (GB)</label>
+                        <div class="slider-container">
+                            <input type="range" class="slider" id="cloudFront" min="0" max="25000" value="800" oninput="updateSliderValue('cloudFront')">
+                            <div class="slider-value" id="cloudFront-value">800 GB</div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>NAT Gateway Data Transfer (GB)</label>
+                        <div class="slider-container">
+                            <input type="range" class="slider" id="natGateway" min="0" max="10000" value="300" oninput="updateSliderValue('natGateway')">
+                            <div class="slider-value" id="natGateway-value">300 GB</div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>API Gateway Data Transfer (GB)</label>
+                        <div class="slider-container">
+                            <input type="range" class="slider" id="apiGateway" min="0" max="15000" value="500" oninput="updateSliderValue('apiGateway')">
+                            <div class="slider-value" id="apiGateway-value">500 GB</div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>S3/DynamoDB via NAT Gateway (GB)</label>
+                        <div class="slider-container">
+                            <input type="range" class="slider" id="s3DynamoNAT" min="0" max="20000" value="1000" oninput="updateSliderValue('s3DynamoNAT')">
+                            <div class="slider-value" id="s3DynamoNAT-value">1000 GB</div>
+                        </div>
+                        <small style="color: #e74c3c; font-size: 0.8rem;">Without VPC Gateway Endpoints ($0.135/GB total cost)</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label>S3/DynamoDB via Gateway Endpoints (GB)</label>
+                        <div class="slider-container">
+                            <input type="range" class="slider" id="s3DynamoGateway" min="0" max="20000" value="1500" oninput="updateSliderValue('s3DynamoGateway')">
+                            <div class="slider-value" id="s3DynamoGateway-value">1500 GB</div>
+                        </div>
+                        <small style="color: #27ae60; font-size: 0.8rem;">With VPC Gateway Endpoints (FREE - no data transfer charges!)</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Other Services via Interface Endpoints (GB)</label>
+                        <div class="slider-container">
+                            <input type="range" class="slider" id="interfaceEndpoints" min="0" max="10000" value="300" oninput="updateSliderValue('interfaceEndpoints')">
+                            <div class="slider-value" id="interfaceEndpoints-value">300 GB</div>
+                        </div>
+                        <small style="color: #3498db; font-size: 0.8rem;">Interface endpoints for other services ($0.01/GB processing)</small>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>🌍 Multi-Region Distribution (%)</label>
+                    <div class="slider-container">
+                        <input type="range" class="slider" id="multiRegionPercent" min="0" max="100" value="30" oninput="updateSliderValue('multiRegionPercent')">
+                        <div class="slider-value" id="multiRegionPercent-value">30%</div>
+                    </div>
+                    <small style="color: #6c757d; font-size: 0.8rem;">Percentage of data transfers crossing regional boundaries (+$0.02/GB)</small>
+                </div>
+
+                <div class="form-group">
+                    <label>📈 Annual Data Growth Rate (%)</label>
+                    <div class="slider-container">
+                        <input type="range" class="slider" id="growthRate" min="0" max="100" value="20" oninput="updateSliderValue('growthRate')">
+                        <div class="slider-value" id="growthRate-value">20%</div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>📅 Projection Timeline (Years)</label>
+                    <div class="slider-container">
+                        <input type="range" class="slider" id="projectionYears" min="1" max="10" value="5" oninput="updateSliderValue('projectionYears')">
+                        <div class="slider-value" id="projectionYears-value">5 Years</div>
+                    </div>
+                </div>
+
+                <button class="calculate-btn pulse" onclick="calculateCosts()">
+                    🧮 Calculate Egress Costs & Projections
+                </button>
+            </div>
+
+            <div class="panel">
+                <h2>💰 Cost Breakdown</h2>
+                <div id="results-container">
+                    <div class="results-panel">
+                        <div class="cost-card">
+                            <div class="cost-value" id="totalCost">$0.00</div>
+                            <div class="cost-label">Total Monthly Cost</div>
+                        </div>
+
+                        <div class="chart-container">
+                            <div class="chart-tabs">
+                                <button class="chart-tab-btn active" onclick="switchChart('pie')">📊 Cost Distribution</button>
+                                <button class="chart-tab-btn" onclick="switchChart('bar')">📈 Cost Comparison</button>
+                                <button class="chart-tab-btn" onclick="switchChart('line')">🔮 Growth Projection</button>
+                            </div>
+                            
+                            <div id="pieChart" class="chart-content active">
+                                <canvas id="costPieChart"></canvas>
+                            </div>
+                            <div id="barChart" class="chart-content">
+                                <canvas id="costBarChart"></canvas>
+                            </div>
+                            <div id="lineChart" class="chart-content">
+                                <canvas id="costLineChart"></canvas>
+                            </div>
+                        </div>
+
+                        <table class="breakdown-table" id="costBreakdown">
+                            <thead>
+                                <tr>
+                                    <th>Transfer Type</th>
+                                    <th>Data (GB)</th>
+                                    <th>Rate</th>
+                                    <th>Monthly Cost</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>Internet (First 100GB Free)</td>
+                                    <td id="internetGB">0</td>
+                                    <td>$0.09/GB</td>
+                                    <td id="internetCost">$0.00</td>
+                                </tr>
+                                <tr>
+                                    <td>Inter-AZ Transfer</td>
+                                    <td id="interAZGB">0</td>
+                                    <td>$0.01/GB</td>
+                                    <td id="interAZCost">$0.00</td>
+                                </tr>
+                                <tr>
+                                    <td>Inter-Region Transfer</td>
+                                    <td id="interRegionGB">0</td>
+                                    <td>$0.02/GB</td>
+                                    <td id="interRegionCost">$0.00</td>
+                                </tr>
+                                <tr style="background: rgba(255,107,53,0.05);">
+                                    <td>Regional Surcharge</td>
+                                    <td id="regionalSurchargeGB">0</td>
+                                    <td>$0.02/GB</td>
+                                    <td id="regionalSurchargeCost">$0.00</td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <div class="cost-card" style="margin-top: 20px;">
+                            <h3 style="margin-bottom: 15px; color: rgba(255,255,255,0.9);">📈 Cost Projection Summary</h3>
+                            <table class="breakdown-table" id="projectionBreakdown">
+                                <thead>
+                                    <tr>
+                                        <th>Year</th>
+                                        <th>Annual Cost</th>
+                                        <th>Growth</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="projectionTableBody">
+                                    <tr>
+                                        <td>Year 1</td>
+                                        <td>$0</td>
+                                        <td>-</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="architecture-section">
+            <div class="panel">
+                <h2>🏗️ Architecture Scenarios</h2>
+                
+                <div class="architecture-tabs">
+                    <button class="arch-tab-button active" onclick="switchArchitecture('basic')">Basic Setup</button>
+                    <button class="arch-tab-button" onclick="switchArchitecture('enterprise')">Enterprise Multi-Account</button>
+                    <button class="arch-tab-button" onclick="switchArchitecture('hybrid')">Hybrid Cloud</button>
+                    <button class="arch-tab-button" onclick="switchArchitecture('enterprisehybrid')">Enterprise Hybrid</button>
+                    <button class="arch-tab-button" onclick="switchArchitecture('multiregion')">Multi-Region</button>
+                    <button class="arch-tab-button" onclick="switchArchitecture('cdn')">CDN & Gateways</button>
+                </div>
+
+                <div id="basic-arch" class="architecture-content active">
+                    <h3>Basic AWS Setup</h3>
+                    <div class="architecture-diagram" id="basicDiagram">
+                        <div style="margin-top: 40px;">
+                            <div class="aws-component account-a" 
+                                 data-tooltip="Main data processing account hosting databases (RDS, DynamoDB), compute (EC2, Lambda), and storage (S3). This is where most of your data originates.">
+                                Account A<br/>Main Processing</div>
+                            <div class="aws-component account-b" style="margin-left: 50px;"
+                                 data-tooltip="Separate account for reporting applications, dashboards, and analytics. Pulls data from Account A for visualization and business intelligence.">
+                                Account B<br/>Reporting App</div>
+                        </div>
+                        <div style="margin-top: 30px;">
+                            <div class="aws-component internet"
+                                 data-tooltip="External users, mobile apps, web browsers, and third-party systems accessing your AWS resources from the public internet.">
+                                🌐 Internet Clients</div>
+                        </div>
+                        <div class="cost-indicator" style="top: 120px; left: 200px;" 
+                             data-explanation="Internet Egress: $0.09/GB for data leaving AWS to the internet. First 100GB per month is FREE (2025 pricing). This applies to web traffic, API responses, file downloads.">
+                            $0.09/GB</div>
+                        <div class="cost-indicator" style="top: 80px; left: 50px;"
+                             data-explanation="Cross-Account Transfer: $0.01/GB for data moving between different AWS accounts in the same region. This includes data replication and reporting queries.">
+                            $0.01/GB</div>
+                    </div>
+                    <div style="margin-top: 15px; padding: 15px; background: rgba(44,62,80,0.1); border-radius: 8px; border-left: 4px solid #2c3e50;">
+                        <p><strong>💡 Interactive Tip:</strong> Hover over any component or cost indicator for detailed explanations!</p>
+                        <p><strong>Cost Factors:</strong> Internet egress at $0.09/GB (first 100GB free), Cross-account transfers at $0.01/GB</p>
+                    </div>
+                </div>
+
+                <div id="enterprise-arch" class="architecture-content">
+                    <h3>Enterprise Multi-Account Architecture</h3>
+                    <div class="architecture-diagram" id="enterpriseDiagram">
+                        <div style="margin-top: 20px;">
+                            <div class="aws-component account-a"
+                                 data-tooltip="Central data processing hub with shared services, databases, and core business logic. Serves data to multiple client accounts and business units.">
+                                Main Processing<br/>Account A</div>
+                            <div class="aws-component account-b" style="margin-left: 40px;"
+                                 data-tooltip="Dedicated reporting and analytics account with business intelligence tools, data warehouses (Redshift), and visualization dashboards.">
+                                Reporting<br/>Account B</div>
+                            <div class="aws-component client-account" style="margin-left: 40px;"
+                                 data-tooltip="Business unit or department-specific account. May host customer-facing applications, specialized workloads, or team-specific resources.">
+                                Client Account 1</div>
+                        </div>
+                        <div style="margin-top: 20px;">
+                            <div class="aws-component client-account"
+                                 data-tooltip="External organization's AWS account (different AWS Organization). Requires special networking setup and may have higher data transfer costs.">
+                                Client Account 2<br/>(Different Org)</div>
+                            <div class="aws-component client-account" style="margin-left: 40px;"
+                                 data-tooltip="Another internal team or division account. Common in large enterprises with multiple product lines or geographic regions.">
+                                Client Account 3</div>
+                        </div>
+                        <div style="margin-top: 20px; text-align: center;">
+                            <span class="connection-element" style="background: #3498db; color: white; padding: 8px 15px; border-radius: 5px; display: inline-block;"
+                                  data-tooltip="AWS Transit Gateway: Hub-and-spoke network architecture allowing multiple VPCs and accounts to connect through a single gateway. Scales better than mesh VPC peering.">
+                                🔗 Transit Gateway</span>
+                            <span class="connection-element" style="background: #9b59b6; color: white; padding: 8px 15px; border-radius: 5px; margin-left: 20px; display: inline-block;"
+                                  data-tooltip="VPC Peering: Direct connection between two VPCs, allowing private communication. More cost-effective for simple point-to-point connections.">
+                                🔗 VPC Peering</span>
+                        </div>
+                        <div class="cost-indicator" style="top: 60px; left: 150px;"
+                             data-explanation="Transit Gateway Data Transfer: $0.02/GB for processing data through AWS Transit Gateway. Includes routing between connected VPCs and accounts.">
+                            $0.02/GB</div>
+                        <div class="cost-indicator" style="top: 120px; left: 80px;"
+                             data-explanation="VPC Peering: $0.01/GB for data transferred between VPCs using peering connections. More economical for direct account-to-account communication.">
+                            $0.01/GB</div>
+                        <div class="cost-indicator" style="top: 160px; right: 80px;"
+                             data-explanation="Cross-Organization Transfer: $0.01/GB for data between accounts in different AWS Organizations. May require additional networking setup and security considerations.">
+                            $0.01/GB</div>
+                        <div class="cost-indicator" style="bottom: 40px; right: 30px; background: #e67e22;"
+                             data-explanation="Regional Multiplier: When accounts span multiple regions, add $0.02/GB surcharge. Use the Multi-Region Distribution slider to adjust the percentage of cross-regional transfers.">
+                            +$0.02/GB<br/><small>Multi-Region</small></div>
+                    </div>
+                    <div style="margin-top: 15px; padding: 15px; background: rgba(52,152,219,0.1); border-radius: 8px; border-left: 4px solid #3498db;">
+                        <p><strong>🏢 Enterprise Note:</strong> Large organizations often use a combination of Transit Gateway and VPC Peering for optimal cost and performance.</p>
+                        <p><strong>⚠️ Regional Impact:</strong> If client accounts span multiple regions, add $0.02/GB for inter-region transfers on top of base costs.</p>
+                        <p><strong>Cost Factors:</strong> Cross-account ($0.01/GB), VPC Peering ($0.01/GB), Transit Gateway ($0.02/GB), + Inter-region ($0.02/GB when applicable)</p>
+                    </div>
+                </div>
+
+                <div id="hybrid-arch" class="architecture-content">
+                    <h3>Hybrid Cloud Architecture</h3>
+                    <div class="architecture-diagram" id="hybridDiagram">
+                        <div style="margin-top: 30px;">
+                            <div class="aws-component account-a"
+                                 data-tooltip="Cloud-based processing account hosting scalable compute and storage resources. Integrates with on-premises systems for hybrid workloads and data synchronization.">
+                                AWS Account A<br/>Main Processing</div>
+                            <div class="aws-component onprem" style="margin-left: 60px;"
+                                 data-tooltip="On-premises data center with existing infrastructure, legacy systems, and sensitive data that needs to remain on-premises for compliance or performance reasons.">
+                                🏢 On-Premises<br/>Data Center</div>
+                        </div>
+                        <div style="margin-top: 30px;">
+                            <span class="connection-element" style="background: #e67e22; color: white; padding: 8px 15px; border-radius: 5px; display: inline-block;"
+                                  data-tooltip="AWS Direct Connect: Dedicated network connection between your data center and AWS. Provides consistent bandwidth, lower latency, and reduced data transfer costs compared to internet-based connections.">
+                                🔗 Direct Connect</span>
+                            <span class="connection-element" style="background: #e74c3c; color: white; padding: 8px 15px; border-radius: 5px; margin-left: 20px; display: inline-block;"
+                                  data-tooltip="Site-to-Site VPN: Encrypted connection over the internet between your on-premises network and AWS VPC. More cost-effective for smaller data volumes but uses internet pricing for data transfer.">
+                                🔗 VPN Connection</span>
+                        </div>
+                        <div style="margin-top: 30px;">
+                            <div class="aws-component client-account"
+                                 data-tooltip="AWS PrivateLink endpoints providing private connectivity to AWS services without traversing the internet. Ensures data stays within AWS network for security and performance.">
+                                PrivateLink<br/>Endpoints</div>
+                        </div>
+                        <div class="cost-indicator" style="top: 80px; left: 120px;"
+                             data-explanation="Direct Connect Data Transfer: $0.02/GB for data transferred through AWS Direct Connect. More economical than internet rates for high-volume transfers.">
+                            $0.02/GB</div>
+                        <div class="cost-indicator" style="top: 120px; right: 120px;"
+                             data-explanation="VPN Data Transfer: $0.09/GB - same as internet egress rates since VPN uses internet connectivity. Consider Direct Connect for cost savings on high-volume transfers.">
+                            $0.09/GB</div>
+                        <div class="cost-indicator" style="bottom: 60px; left: 150px;"
+                             data-explanation="PrivateLink Data Transfer: $0.01/GB for data processed through VPC endpoints. Enables private communication with AWS services without internet gateway costs.">
+                            $0.01/GB</div>
+                        <div class="cost-indicator" style="bottom: 30px; right: 50px; background: #e67e22;"
+                             data-explanation="Regional Multiplier: For hybrid architectures spanning multiple AWS regions, add $0.02/GB surcharge for cross-regional data transfers. Critical for DR and geographically distributed setups.">
+                            +$0.02/GB<br/><small>Multi-Region</small></div>
+                    </div>
+                    <div style="margin-top: 15px; padding: 15px; background: rgba(142,68,173,0.1); border-radius: 8px; border-left: 4px solid #8e44ad;">
+                        <p><strong>🔗 Hybrid Strategy:</strong> Direct Connect pays for itself quickly with high data volumes (>1TB/month). VPN is suitable for smaller, intermittent transfers.</p>
+                        <p><strong>🌍 Multi-Region Hybrid:</strong> If your AWS resources span multiple regions, data crossing regions adds $0.02/GB on top of base transfer costs.</p>
+                        <p><strong>Cost Factors:</strong> Direct Connect ($0.02/GB), VPN ($0.09/GB), PrivateLink ($0.01/GB), + Regional boundaries ($0.02/GB)</p>
+                    </div>
+                </div>
+
+                <div id="enterprisehybrid-arch" class="architecture-content">
+                    <h3>Enterprise Multi-Account Hybrid Architecture</h3>
+                    <div class="architecture-diagram" id="enterprisehybridDiagram">
+                        <div style="margin-top: 20px;">
+                            <div style="display: inline-block; vertical-align: top; margin-right: 40px;">
+                                <h4 style="color: #2c3e50; margin-bottom: 15px;">🏢 On-Premises</h4>
+                                <div class="aws-component onprem"
+                                     data-tooltip="Corporate data center hosting legacy systems, compliance-sensitive data, and on-premises Active Directory. Connected to AWS via Direct Connect and backup VPN.">
+                                    🏢 Corporate DC<br/>Legacy Systems</div>
+                                <div class="aws-component onprem" style="margin-top: 10px;"
+                                     data-tooltip="Branch offices and remote locations connecting via Site-to-Site VPN for accessing both on-premises resources and AWS workloads.">
+                                    🏪 Branch Offices<br/>VPN Connected</div>
+                            </div>
+                            
+                            <div style="display: inline-block; vertical-align: top;">
+                                <h4 style="color: #2c3e50; margin-bottom: 15px;">☁️ AWS Multi-Account Organization</h4>
+                                <div style="margin-bottom: 15px;">
+                                    <div class="aws-component account-a"
+                                         data-tooltip="Shared services account hosting AWS Directory Service, DNS, logging, monitoring, and security tools. Central hub for cross-account services and hybrid connectivity.">
+                                        Shared Services<br/>Account</div>
+                                    <div class="aws-component account-b" style="margin-left: 30px;"
+                                         data-tooltip="Production workloads account with strict governance and compliance controls. Hosts customer-facing applications and production databases.">
+                                        Production<br/>Account</div>
+                                </div>
+                                <div style="margin-bottom: 15px;">
+                                    <div class="aws-component client-account"
+                                         data-tooltip="Development and testing account with relaxed policies for experimentation. Isolated from production but can access shared services and hybrid resources.">
+                                        Dev/Test<br/>Account</div>
+                                    <div class="aws-component client-account" style="margin-left: 30px;"
+                                         data-tooltip="Data analytics account with data lakes, warehouses, and ML workloads. Processes data from on-premises, production, and external sources.">
+                                        Analytics<br/>Account</div>
+                                </div>
+                                <div>
+                                    <div class="aws-component" style="background: #e67e22; color: white;"
+                                         data-tooltip="Security and compliance account hosting AWS Security Hub, GuardDuty, Config, and audit logs. Monitors both cloud and hybrid infrastructure.">
+                                        Security<br/>Account</div>
+                                    <div class="aws-component" style="background: #9b59b6; color: white; margin-left: 30px;"
+                                         data-tooltip="External partner account in different AWS Organization. Requires special cross-org networking and has different data transfer cost implications.">
+                                        Partner Org<br/>External Account</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="margin-top: 30px; text-align: center;">
+                            <h4 style="color: #2c3e50; margin-bottom: 15px;">🔗 Connectivity Matrix</h4>
+                            <div style="margin-bottom: 15px;">
+                                <span class="connection-element" style="background: #e67e22; color: white; padding: 6px 12px; border-radius: 5px; margin: 5px; display: inline-block; font-size: 0.8rem;"
+                                      data-tooltip="AWS Direct Connect: Primary high-bandwidth connection between corporate data center and AWS. Terminates in Shared Services account and shared via Transit Gateway.">
+                                    🔗 Direct Connect</span>
+                                <span class="connection-element" style="background: #e74c3c; color: white; padding: 6px 12px; border-radius: 5px; margin: 5px; display: inline-block; font-size: 0.8rem;"
+                                      data-tooltip="Site-to-Site VPN: Backup connectivity and branch office connections. Provides encrypted tunnels over internet for redundancy and remote access.">
+                                    🔗 Site-to-Site VPN</span>
+                            </div>
+                            <div style="margin-bottom: 15px;">
+                                <span class="connection-element" style="background: #3498db; color: white; padding: 6px 12px; border-radius: 5px; margin: 5px; display: inline-block; font-size: 0.8rem;"
+                                      data-tooltip="Transit Gateway: Central hub routing traffic between all accounts, on-premises, and partner networks. Enables hub-and-spoke architecture with centralized routing policies.">
+                                    🔗 Transit Gateway</span>
+                                <span class="connection-element" style="background: #9b59b6; color: white; padding: 6px 12px; border-radius: 5px; margin: 5px; display: inline-block; font-size: 0.8rem;"
+                                      data-tooltip="VPC Peering: Direct connections for high-bandwidth, low-latency communication between specific account pairs. Often used for production-to-analytics data flows.">
+                                    🔗 VPC Peering</span>
+                            </div>
+                            <div>
+                                <span class="connection-element" style="background: #27ae60; color: white; padding: 6px 12px; border-radius: 5px; margin: 5px; display: inline-block; font-size: 0.8rem;"
+                                      data-tooltip="PrivateLink Endpoints: Secure, private connectivity to AWS services and partner SaaS applications. Avoids internet routing and reduces egress costs.">
+                                    🔗 PrivateLink</span>
+                                <span class="connection-element" style="background: #f39c12; color: white; padding: 6px 12px; border-radius: 5px; margin: 5px; display: inline-block; font-size: 0.8rem;"
+                                      data-tooltip="Cross-Organization Networking: Special peering arrangements with external partners. May require Resource Access Manager (RAM) sharing and has unique cost implications.">
+                                    🔗 Cross-Org Peering</span>
+                            </div>
+                        </div>
+
+                        <div class="cost-indicator" style="top: 60px; left: 100px;"
+                             data-explanation="Direct Connect Hub: $0.02/GB for data flowing from on-premises through Direct Connect to AWS accounts. Significantly cheaper than VPN alternative at $0.09/GB.">
+                            $0.02/GB</div>
+                        <div class="cost-indicator" style="top: 100px; left: 50px; background: #e74c3c;"
+                             data-explanation="VPN Backup Path: $0.09/GB for branch offices and backup connectivity. Same as internet egress rates but provides secure encrypted tunnels.">
+                            $0.09/GB</div>
+                        <div class="cost-indicator" style="top: 40px; right: 200px;"
+                             data-explanation="Transit Gateway Processing: $0.02/GB for routing between accounts and hybrid connections. Central hub for complex multi-account, multi-network architecture.">
+                            $0.02/GB</div>
+                        <div class="cost-indicator" style="top: 120px; right: 150px;"
+                             data-explanation="Cross-Account Transfers: $0.01/GB for data flowing between AWS accounts within the same organization. Applies to all inter-account communication.">
+                            $0.01/GB</div>
+                        <div class="cost-indicator" style="bottom: 80px; left: 120px; background: #9b59b6;"
+                             data-explanation="VPC Peering High-Volume: $0.01/GB for direct account-to-account connections. Often used for production-to-analytics data pipelines and high-bandwidth scenarios.">
+                            $0.01/GB</div>
+                        <div class="cost-indicator" style="bottom: 40px; right: 100px; background: #27ae60;"
+                             data-explanation="PrivateLink Services: $0.01/GB for secure, private connectivity to AWS services and third-party SaaS. Eliminates internet routing and improves security.">
+                            $0.01/GB</div>
+                        <div class="cost-indicator" style="bottom: 120px; right: 20px; background: #f39c12;"
+                             data-explanation="Cross-Organization: $0.01/GB base rate but may have additional networking setup costs and complexity. Requires careful design for security and compliance.">
+                            $0.01/GB+</div>
+                        <div class="cost-indicator" style="bottom: 20px; left: 250px; background: #e67e22;"
+                             data-explanation="Regional Multiplier: Add $0.02/GB when data crosses regional boundaries. Critical consideration for disaster recovery and geographic distribution strategies.">
+                            +$0.02/GB<br/><small>Multi-Region</small></div>
+                    </div>
+                    <div style="margin-top: 15px; padding: 15px; background: rgba(52,73,94,0.1); border-radius: 8px; border-left: 4px solid #34495e;">
+                        <p><strong>🏗️ Complex Architecture Benefits:</strong> Combines organizational governance with hybrid flexibility. Enables centralized security/compliance while maintaining workload isolation.</p>
+                        <p><strong>📊 Cost Optimization Strategies:</strong> Use VPC Peering for high-volume data flows, Transit Gateway for complex routing, Direct Connect for hybrid, PrivateLink for AWS services.</p>
+                        <p><strong>🚨 Cost Multipliers:</strong> Data crossing multiple boundaries (account + network + region) can accumulate charges. Plan data flows carefully to minimize cross-boundary transfers.</p>
+                        <p><strong>💰 Typical Monthly Costs:</strong> Enterprise hybrid can range from $500-5000+ monthly just in data transfer costs, depending on data volume and architecture complexity.</p>
+                        <p><strong>Cost Factors:</strong> Direct Connect ($0.02/GB), VPN ($0.09/GB), Transit Gateway ($0.02/GB), Cross-account ($0.01/GB), VPC Peering ($0.01/GB), PrivateLink ($0.01/GB), + Regional surcharges</p>
+                    </div>
+                </div>
+
+                <div id="multiregion-arch" class="architecture-content">
+                    <h3>Multi-Region Architecture</h3>
+                    <div class="architecture-diagram" id="multiregionDiagram">
+                        <div style="margin-top: 20px;">
+                            <span class="connection-element" style="background: #2980b9; color: white; padding: 15px; border-radius: 8px; display: inline-block;"
+                                  data-tooltip="US-East-1 (N. Virginia): Primary AWS region hosting production workloads. Often chosen for cost optimization and proximity to major internet backbones.">
+                                🌎 US-East-1</span>
+                            <span class="connection-element" style="background: #27ae60; color: white; padding: 15px; border-radius: 8px; margin-left: 60px; display: inline-block;"
+                                  data-tooltip="EU-West-1 (Ireland): Secondary region for disaster recovery, compliance, or serving European users. Cross-region replication ensures data availability.">
+                                🌏 EU-West-1</span>
+                        </div>
+                        <div style="margin-top: 30px;">
+                            <div class="aws-component account-a"
+                                 data-tooltip="Primary production environment handling live traffic, transactions, and user requests. Contains master databases, application servers, and primary data storage.">
+                                Account A<br/>Primary Region</div>
+                            <div class="aws-component account-b" style="margin-left: 50px;"
+                                 data-tooltip="Disaster recovery environment with replicated data and standby resources. Can be activated during outages or serve local users for performance optimization.">
+                                Account A<br/>DR Region</div>
+                        </div>
+                        <div style="margin-top: 30px;">
+                            <span class="connection-element" style="background: #8e44ad; color: white; padding: 8px 15px; border-radius: 5px; display: inline-block;"
+                                  data-tooltip="Automated data synchronization between regions using services like S3 Cross-Region Replication, RDS Cross-Region Backups, or custom replication solutions.">
+                                🔄 Cross-Region Replication</span>
+                        </div>
+                        <div class="cost-indicator" style="top: 120px; left: 200px;"
+                             data-explanation="Inter-Region Data Transfer: $0.02/GB for data transferred between AWS regions. This includes replication traffic, cross-region backups, and multi-region application communication.">
+                            $0.02/GB</div>
+                        <div class="cost-indicator" style="bottom: 80px; left: 180px;"
+                             data-explanation="Same-Region Transfer: $0.01/GB for data transfers within the same region but across availability zones. Used for high-availability setups and load balancing.">
+                            $0.01/GB</div>
+                    </div>
+                    <div style="margin-top: 15px; padding: 15px; background: rgba(52,152,219,0.1); border-radius: 8px; border-left: 4px solid #3498db;">
+                        <p><strong>🌐 Global Strategy:</strong> Multi-region architectures improve availability and performance but significantly increase data transfer costs. Consider data locality and replication frequency.</p>
+                        <p><strong>Cost Factors:</strong> Inter-region transfers ($0.02/GB), Cross-region replication costs, potential data sovereignty compliance costs</p>
+                    </div>
+                </div>
+
+                <div id="cdn-arch" class="architecture-content">
+                    <h3>CDN & Gateway Services Architecture</h3>
+                    <div class="architecture-diagram" id="cdnDiagram">
+                        <div style="margin-top: 30px;">
+                            <div class="aws-component account-a"
+                                 data-tooltip="CloudFront CDN edge locations serving content globally. Caches static assets, API responses, and dynamic content to reduce origin server load and improve performance.">
+                                🌐 CloudFront CDN<br/>Edge Locations</div>
+                            <div class="aws-component account-b" style="margin-left: 50px;"
+                                 data-tooltip="Origin servers in AWS regions hosting your application, databases, and content. CloudFront fetches content from these origins when not cached at edge locations.">
+                                🏗️ Origin Servers<br/>AWS Regions</div>
+                        </div>
+                        <div style="margin-top: 30px;">
+                            <div class="aws-component onprem"
+                                 data-tooltip="NAT Gateway providing outbound internet connectivity for private subnet resources. Processes data transfers from EC2 instances, RDS, and other services that need internet access.">
+                                🔄 NAT Gateway<br/>Private Subnet Egress</div>
+                            <div class="aws-component client-account" style="margin-left: 50px;"
+                                 data-tooltip="API Gateway handling REST APIs, WebSocket APIs, and HTTP APIs. Routes requests to Lambda, EC2, or other AWS services. Data transfer charges apply to API responses sent to clients.">
+                                🚪 API Gateway<br/>API Management</div>
+                        </div>
+                        <div style="margin-top: 30px;">
+                            <div class="aws-component" style="background: #e74c3c; color: white;"
+                                 data-tooltip="S3/DynamoDB access through NAT Gateway: Costs $0.045/GB NAT processing + $0.09/GB internet egress = $0.135/GB total. This happens when no VPC Gateway Endpoints are configured.">
+                                🚫 S3/DynamoDB via NAT<br/>$0.135/GB</div>
+                            <div class="aws-component" style="background: #27ae60; color: white; margin-left: 50px;"
+                                 data-tooltip="S3/DynamoDB access through VPC Gateway Endpoints: Completely FREE data transfer! Gateway endpoints route traffic directly within AWS backbone without internet egress costs.">
+                                ✅ S3/DynamoDB Gateway Endpoints<br/>FREE</div>
+                        </div>
+                        <div style="margin-top: 20px;">
+                            <div class="aws-component" style="background: #3498db; color: white; margin: 0 auto;"
+                                 data-tooltip="VPC Interface Endpoints for other AWS services (Lambda, SQS, SNS, etc.): $0.01/GB data processing cost. Still much cheaper than NAT Gateway route.">
+                                🔗 Interface Endpoints<br/>Other Services: $0.01/GB</div>
+                        </div>
+                        <div style="margin-top: 30px;">
+                            <span class="connection-element" style="background: #f39c12; color: white; padding: 8px 15px; border-radius: 5px; display: inline-block;"
+                                  data-tooltip="Global Content Delivery: CloudFront edge locations cache and serve content worldwide, reducing latency and origin server load while optimizing egress costs.">
+                                📡 Global Distribution</span>
+                        </div>
+                        <div class="cost-indicator" style="top: 80px; left: 150px;"
+                             data-explanation="CloudFront Data Transfer: $0.085/GB average global pricing for CDN distribution. Varies by region - cheaper than direct internet egress for high-volume content delivery.">
+                            $0.085/GB</div>
+                        <div class="cost-indicator" style="bottom: 100px; right: 100px;"
+                             data-explanation="NAT Gateway Processing: $0.045/GB for data processing through NAT Gateway. Additional to standard internet egress costs ($0.09/GB), making total cost $0.135/GB.">
+                            $0.045/GB</div>
+                        <div class="cost-indicator" style="bottom: 40px; left: 200px;"
+                             data-explanation="Origin Fetch: When CloudFront fetches content from origin, standard inter-region ($0.02/GB) or internet egress ($0.09/GB) rates apply depending on origin location.">
+                            Origin: $0.02-0.09/GB</div>
+                        <div class="cost-indicator" style="top: 120px; right: 80px;"
+                             data-explanation="API Gateway Data Transfer: $0.09/GB for data transferred from API Gateway to clients. This applies to API responses (JSON, XML, binary) and is separate from compute costs. No free tier for data transfer.">
+                            $0.09/GB</div>
+                        <div class="cost-indicator" style="bottom: 120px; left: 80px; background: #e74c3c;"
+                             data-explanation="S3/DynamoDB without Gateway Endpoints: $0.135/GB total cost ($0.045 NAT + $0.09 internet egress). This is the default path for private subnet resources accessing S3/DynamoDB without proper VPC configuration.">
+                            $0.135/GB<br/><small>S3/DDB via NAT</small></div>
+                        <div class="cost-indicator" style="bottom: 120px; right: 80px; background: #27ae60;"
+                             data-explanation="S3/DynamoDB Gateway Endpoints: $0.00/GB - Completely FREE! VPC Gateway Endpoints route S3 and DynamoDB traffic directly within AWS without internet egress. This can save thousands per month for data-intensive applications.">
+                            FREE<br/><small>Gateway Endpoints</small></div>
+                        <div class="cost-indicator" style="bottom: 60px; left: 200px; background: #3498db;"
+                             data-explanation="Interface Endpoints: $0.01/GB for other AWS services like Lambda, SQS, SNS, Secrets Manager. Much cheaper than NAT Gateway routing and provides private connectivity within VPC.">
+                            $0.01/GB<br/><small>Interface Endpoints</small></div>
+                    </div>
+                    <div style="margin-top: 15px; padding: 15px; background: rgba(243,156,18,0.1); border-radius: 8px; border-left: 4px solid #f39c12;">
+                        <p><strong>💡 Cost Optimization:</strong> CloudFront can significantly reduce egress costs for high-traffic applications by caching content at edge locations.</p>
+                        <p><strong>⚠️ NAT Gateway Impact:</strong> Private subnet resources using NAT Gateway pay both processing ($0.045/GB) and internet egress ($0.09/GB) fees.</p>
+                        <p><strong>🚪 API Gateway Note:</strong> API responses have the same $0.09/GB rate as internet egress, but no free tier. Consider CloudFront caching for API responses.</p>
+                        <p><strong>🎯 VPC Endpoints Huge Savings:</strong> S3/DynamoDB Gateway Endpoints are FREE vs $0.135/GB via NAT Gateway - this can save $1,350 per TB!</p>
+                        <p><strong>Cost Factors:</strong> CloudFront ($0.085/GB), NAT Gateway ($0.045/GB), API Gateway ($0.09/GB), S3/DDB via NAT ($0.135/GB), Gateway Endpoints (FREE), Interface Endpoints ($0.01/GB)</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div style="margin-top: 40px; padding: 30px; background: #f8f9fa; border-radius: 10px; border: 1px solid #e9ecef;">
+            <div style="text-align: center; margin-bottom: 30px; padding: 20px; background: rgba(52, 152, 219, 0.1); border-radius: 8px; border-left: 4px solid #3498db;">
+                <h3 style="color: #2c3e50; margin-bottom: 15px;">🏗️ Interactive Learning Tools</h3>
+                <p style="color: #5d6d7e; margin-bottom: 20px;">Explore interactive network diagrams and detailed strategic analysis to understand architecture relationships and cost implications.</p>
+                <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap;">
+                    <a href="network-diagram-original.html" style="background: #3498db; color: white; padding: 12px 25px; border-radius: 25px; text-decoration: none; font-weight: 600; display: inline-block; transition: all 0.3s ease;" 
+                       onmouseover="this.style.background='#2980b9'; this.style.transform='translateY(-2px)'" 
+                       onmouseout="this.style.background='#3498db'; this.style.transform='translateY(0)'">
+                       🔗 Interactive Network Diagram
+                    </a>
+                    <a href="aws-egress-report.html" style="background: #2c3e50; color: white; padding: 12px 25px; border-radius: 25px; text-decoration: none; font-weight: 600; display: inline-block; transition: all 0.3s ease;" 
+                       onmouseover="this.style.background='#34495e'; this.style.transform='translateY(-2px)'" 
+                       onmouseout="this.style.background='#2c3e50'; this.style.transform='translateY(0)'">
+                       📋 Strategic Analysis Report
+                    </a>
+                </div>
+            </div>
+            
+            <h2 style="color: #2c3e50; margin-bottom: 25px; text-align: center;">📚 Reference Links & Documentation</h2>
+            
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+                <div>
+                    <h3 style="color: #2c3e50; margin-bottom: 15px;">🔗 Official AWS Pricing</h3>
+                    <ul style="line-height: 1.8;">
+                        <li><a href="https://aws.amazon.com/ec2/pricing/on-demand/" target="_blank" style="color: #3498db; text-decoration: none;">EC2 Data Transfer Pricing</a></li>
+                        <li><a href="https://aws.amazon.com/cloudfront/pricing/" target="_blank" style="color: #3498db; text-decoration: none;">CloudFront CDN Pricing</a></li>
+                        <li><a href="https://aws.amazon.com/vpc/pricing/" target="_blank" style="color: #3498db; text-decoration: none;">VPC & NAT Gateway Pricing</a></li>
+                        <li><a href="https://aws.amazon.com/directconnect/pricing/" target="_blank" style="color: #3498db; text-decoration: none;">Direct Connect Pricing</a></li>
+                        <li><a href="https://aws.amazon.com/transit-gateway/pricing/" target="_blank" style="color: #3498db; text-decoration: none;">Transit Gateway Pricing</a></li>
+                        <li><a href="https://aws.amazon.com/api-gateway/pricing/" target="_blank" style="color: #3498db; text-decoration: none;">API Gateway Pricing</a></li>
+                    </ul>
+                </div>
+
+                <div>
+                    <h3 style="color: #27ae60; margin-bottom: 15px;">📖 Architecture Guides</h3>
+                    <ul style="line-height: 1.8;">
+                        <li><a href="https://aws.amazon.com/blogs/architecture/overview-of-data-transfer-costs-for-common-architectures/" target="_blank" style="color: #3498db; text-decoration: none;">Data Transfer Costs Overview</a></li>
+                        <li><a href="https://docs.aws.amazon.com/wellarchitected/latest/cost-optimization-pillar/" target="_blank" style="color: #3498db; text-decoration: none;">Well-Architected Cost Optimization</a></li>
+                        <li><a href="https://aws.amazon.com/blogs/networking-and-content-delivery/" target="_blank" style="color: #3498db; text-decoration: none;">Networking & Content Delivery Blog</a></li>
+                        <li><a href="https://docs.aws.amazon.com/vpc/latest/userguide/" target="_blank" style="color: #3498db; text-decoration: none;">VPC User Guide</a></li>
+                    </ul>
+                </div>
+
+                <div>
+                    <h3 style="color: #e74c3c; margin-bottom: 15px;">🛠️ Cost Management Tools</h3>
+                    <ul style="line-height: 1.8;">
+                        <li><a href="https://aws.amazon.com/aws-cost-management/" target="_blank" style="color: #3498db; text-decoration: none;">AWS Cost Management Console</a></li>
+                        <li><a href="https://calculator.aws/" target="_blank" style="color: #3498db; text-decoration: none;">AWS Pricing Calculator</a></li>
+                        <li><a href="https://aws.amazon.com/aws-cost-management/aws-cost-explorer/" target="_blank" style="color: #3498db; text-decoration: none;">AWS Cost Explorer</a></li>
+                        <li><a href="https://aws.amazon.com/aws-cost-management/aws-budgets/" target="_blank" style="color: #3498db; text-decoration: none;">AWS Budgets</a></li>
+                    </ul>
+                </div>
+
+                <div>
+                    <h3 style="color: #5D6D7E; margin-bottom: 15px;">🎓 Best Practices</h3>
+                    <ul style="line-height: 1.8;">
+                        <li><a href="https://aws.amazon.com/blogs/aws-cloud-financial-management/overview-of-data-transfer-costs-for-common-architectures/" target="_blank" style="color: #3498db; text-decoration: none;">Data Transfer Cost Optimization</a></li>
+                        <li><a href="https://aws.amazon.com/blogs/architecture/reduce-cost-and-increase-security-with-amazon-vpc-endpoints/" target="_blank" style="color: #3498db; text-decoration: none;">VPC Endpoints Cost Reduction</a></li>
+                        <li><a href="https://aws.amazon.com/blogs/networking-and-content-delivery/optimizing-your-aws-infrastructure-for-sustainability-part-iii-networking/" target="_blank" style="color: #3498db; text-decoration: none;">Network Optimization Guide</a></li>
+                        <li><a href="https://docs.aws.amazon.com/whitepapers/latest/how-aws-pricing-works/data-transfer.html" target="_blank" style="color: #3498db; text-decoration: none;">How AWS Pricing Works - Data Transfer</a></li>
+                    </ul>
+                </div>
+            </div>
+
+            <div style="margin-top: 25px; padding: 20px; background: rgba(255,107,53,0.05); border-radius: 8px; border: 1px solid rgba(255,107,53,0.2); text-align: center;">
+                <p style="color: #666; margin-bottom: 10px;"><strong>💡 Pro Tip:</strong> Bookmark this estimator and the official pricing pages above as AWS pricing can change quarterly.</p>
+                <p style="color: #666; font-size: 0.9rem;">Last Updated: January 2025 | Pricing reflects current AWS rates and the new 100GB free tier.</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // AWS Pricing Data (2025 rates)
+        const AWS_PRICING = {
+            internet: {
+                freeThreshold: 100, // GB
+                rates: [
+                    { threshold: 10000, rate: 0.09 },    // First 10TB
+                    { threshold: 50000, rate: 0.085 },   // Next 40TB
+                    { threshold: 150000, rate: 0.07 },   // Next 100TB
+                    { threshold: Infinity, rate: 0.05 }  // Over 150TB
+                ]
+            },
+            interAZ: 0.01,
+            interRegion: 0.02,
+            crossAccount: 0.01,
+            vpcPeering: 0.01,
+            transitGateway: 0.02,
+            directConnect: 0.02,
+            vpnTransfer: 0.09,
+            privateLink: 0.01,
+            cloudFront: 0.085,    // Average CloudFront pricing
+            natGateway: 0.045,    // NAT Gateway data processing
+            apiGateway: 0.09,     // API Gateway data transfer (same as internet egress)
+            s3DynamoNAT: 0.135,   // NAT Gateway + Internet egress for S3/DynamoDB without gateway endpoints
+            s3DynamoGateway: 0,   // FREE - Gateway endpoints for S3/DynamoDB have no data transfer charges
+            interfaceEndpoints: 0.01  // Interface endpoint data processing
+        };
+
+        function updateSliderValue(sliderId) {
+            const slider = document.getElementById(sliderId);
+            const valueElement = document.getElementById(sliderId + '-value');
+            const value = slider.value;
+            
+            // Set appropriate unit based on slider type
+            let displayValue = value;
+            if (sliderId === 'growthRate' || sliderId === 'multiRegionPercent') {
+                displayValue = value + '%';
+            } else if (sliderId === 'projectionYears') {
+                displayValue = value + (value == 1 ? ' Year' : ' Years');
+            } else {
+                displayValue = value + ' GB';
+            }
+            
+            valueElement.textContent = displayValue;
+            
+            // Position the value indicator
+            const percentage = (value - slider.min) / (slider.max - slider.min);
+            valueElement.style.left = percentage * 100 + '%';
+            
+            // Auto-calculate on slider change
+            setTimeout(calculateCosts, 100);
+        }
+
+        function switchTab(tabName) {
+            // Hide all tab contents
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Remove active class from all buttons
+            document.querySelectorAll('.tab-button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            // Show selected tab
+            document.getElementById(tabName + '-tab').classList.add('active');
+            event.target.classList.add('active');
+            
+            // Recalculate costs
+            setTimeout(calculateCosts, 200);
+        }
+
+        function calculateInternetCost(gb) {
+            if (gb <= AWS_PRICING.internet.freeThreshold) {
+                return 0;
+            }
+            
+            let cost = 0;
+            let remainingGB = gb - AWS_PRICING.internet.freeThreshold;
+            
+            for (const tier of AWS_PRICING.internet.rates) {
+                const gbInTier = Math.min(remainingGB, tier.threshold);
+                cost += gbInTier * tier.rate;
+                remainingGB -= gbInTier;
+                
+                if (remainingGB <= 0) break;
+            }
+            
+            return cost;
+        }
+
+        function calculateCosts() {
+            const costs = {
+                internet: 0,
+                interAZ: 0,
+                interRegion: 0,
+                crossAccount: 0,
+                vpcPeering: 0,
+                transitGateway: 0,
+                directConnect: 0,
+                vpnTransfer: 0,
+                privateLink: 0,
+                cloudFront: 0,
+                natGateway: 0,
+                apiGateway: 0,
+                s3DynamoNAT: 0,
+                s3DynamoGateway: 0,
+                interfaceEndpoints: 0,
+                regionalSurcharge: 0
+            };
+
+            // Get values from all tabs
+            const internetGB = parseFloat(document.getElementById('internetData').value || 0);
+            const interAZGB = parseFloat(document.getElementById('interAZ').value || 0);
+            const interRegionGB = parseFloat(document.getElementById('interRegion').value || 0);
+            const crossAccountGB = parseFloat(document.getElementById('crossAccount').value || 0);
+            const vpcPeeringGB = parseFloat(document.getElementById('vpcPeering').value || 0);
+            const transitGatewayGB = parseFloat(document.getElementById('transitGateway').value || 0);
+            const directConnectGB = parseFloat(document.getElementById('directConnect').value || 0);
+            const vpnTransferGB = parseFloat(document.getElementById('vpnTransfer').value || 0);
+            const privateLinkGB = parseFloat(document.getElementById('privateLink').value || 0);
+            const cloudFrontGB = parseFloat(document.getElementById('cloudFront').value || 0);
+            const natGatewayGB = parseFloat(document.getElementById('natGateway').value || 0);
+            const apiGatewayGB = parseFloat(document.getElementById('apiGateway').value || 0);
+            const s3DynamoNATGB = parseFloat(document.getElementById('s3DynamoNAT').value || 0);
+            const s3DynamoGatewayGB = parseFloat(document.getElementById('s3DynamoGateway').value || 0);
+            const interfaceEndpointsGB = parseFloat(document.getElementById('interfaceEndpoints').value || 0);
+            const multiRegionPercent = parseFloat(document.getElementById('multiRegionPercent').value || 0) / 100;
+
+            // Calculate base costs
+            costs.internet = calculateInternetCost(internetGB);
+            costs.interAZ = interAZGB * AWS_PRICING.interAZ;
+            costs.interRegion = interRegionGB * AWS_PRICING.interRegion;
+            costs.crossAccount = crossAccountGB * AWS_PRICING.crossAccount;
+            costs.vpcPeering = vpcPeeringGB * AWS_PRICING.vpcPeering;
+            costs.transitGateway = transitGatewayGB * AWS_PRICING.transitGateway;
+            costs.directConnect = directConnectGB * AWS_PRICING.directConnect;
+            costs.vpnTransfer = vpnTransferGB * AWS_PRICING.vpnTransfer;
+            costs.privateLink = privateLinkGB * AWS_PRICING.privateLink;
+            costs.cloudFront = cloudFrontGB * AWS_PRICING.cloudFront;
+            costs.natGateway = natGatewayGB * AWS_PRICING.natGateway;
+            costs.apiGateway = apiGatewayGB * AWS_PRICING.apiGateway;
+            costs.s3DynamoNAT = s3DynamoNATGB * AWS_PRICING.s3DynamoNAT;
+            costs.s3DynamoGateway = s3DynamoGatewayGB * AWS_PRICING.s3DynamoGateway; // This will be 0
+            costs.interfaceEndpoints = interfaceEndpointsGB * AWS_PRICING.interfaceEndpoints;
+
+            // Calculate regional surcharge for enterprise and hybrid transfers
+            const enterpriseTransfers = crossAccountGB + vpcPeeringGB + transitGatewayGB;
+            const hybridTransfers = directConnectGB + privateLinkGB;
+            const regionalSurchargeGB = (enterpriseTransfers + hybridTransfers) * multiRegionPercent;
+            costs.regionalSurcharge = regionalSurchargeGB * 0.02; // $0.02/GB for inter-region
+
+            const totalCost = Object.values(costs).reduce((sum, cost) => sum + cost, 0);
+
+            // Update UI
+            updateResults(costs, totalCost, {
+                internetGB, interAZGB, interRegionGB, crossAccountGB,
+                vpcPeeringGB, transitGatewayGB, directConnectGB,
+                vpnTransferGB, privateLinkGB, cloudFrontGB, natGatewayGB, apiGatewayGB,
+                s3DynamoNATGB, s3DynamoGatewayGB, interfaceEndpointsGB
+            });
+            
+            // Update charts
+            updateCharts(costs, totalCost);
+        }
+
+        function updateResults(costs, totalCost, gbValues) {
+            // Update total cost with animation
+            animateValue('totalCost', 0, totalCost, 1000, '$');
+            
+            // Update breakdown table
+            document.getElementById('internetGB').textContent = gbValues.internetGB;
+            document.getElementById('internetCost').textContent = '$' + costs.internet.toFixed(2);
+            document.getElementById('interAZGB').textContent = gbValues.interAZGB;
+            document.getElementById('interAZCost').textContent = '$' + costs.interAZ.toFixed(2);
+            document.getElementById('interRegionGB').textContent = gbValues.interRegionGB;
+            document.getElementById('interRegionCost').textContent = '$' + costs.interRegion.toFixed(2);
+            
+            // Calculate and display regional surcharge data
+            const multiRegionPercent = parseFloat(document.getElementById('multiRegionPercent').value || 0) / 100;
+            const enterpriseTransfers = gbValues.crossAccountGB + gbValues.vpcPeeringGB + gbValues.transitGatewayGB;
+            const hybridTransfers = gbValues.directConnectGB + gbValues.privateLinkGB;
+            const regionalSurchargeGB = (enterpriseTransfers + hybridTransfers) * multiRegionPercent;
+            document.getElementById('regionalSurchargeGB').textContent = regionalSurchargeGB.toFixed(0);
+            document.getElementById('regionalSurchargeCost').textContent = '$' + costs.regionalSurcharge.toFixed(2);
+
+            // Update projection table
+            updateProjectionTable(totalCost);
+        }
+        
+        function updateProjectionTable(totalCost) {
+            const growthRate = parseFloat(document.getElementById('growthRate').value || 20) / 100;
+            const projectionYears = parseInt(document.getElementById('projectionYears').value || 5);
+            
+            const tableBody = document.getElementById('projectionTableBody');
+            tableBody.innerHTML = '';
+            
+            let currentAnnualCost = totalCost * 12; // Convert monthly to annual
+            
+            for (let year = 1; year <= projectionYears; year++) {
+                const row = document.createElement('tr');
+                const growthText = year === 1 ? '-' : `+${(growthRate * 100).toFixed(1)}%`;
+                
+                row.innerHTML = `
+                    <td>Year ${year}</td>
+                    <td style="font-weight: bold; color: #2C3E50;">$${currentAnnualCost.toFixed(0)}</td>
+                    <td>${growthText}</td>
+                `;
+                tableBody.appendChild(row);
+                
+                currentAnnualCost = currentAnnualCost * (1 + growthRate);
+            }
+        }
+
+        // Chart.js instances
+        let pieChart, barChart, lineChart;
+
+        function initializeCharts() {
+            const chartOptions = {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        labels: {
+                            color: 'white',
+                            font: { size: 12 }
+                        }
+                    }
+                }
+            };
+
+            // Pie Chart
+            const pieCtx = document.getElementById('costPieChart').getContext('2d');
+            pieChart = new Chart(pieCtx, {
+                type: 'pie',
+                data: {
+                    labels: ['Internet', 'Inter-AZ', 'Inter-Region', 'Enterprise', 'Hybrid', 'CDN/Gateway'],
+                    datasets: [{
+                        data: [10, 5, 8, 12, 15, 8], // Initial non-zero values for visibility
+                        backgroundColor: [
+                            '#FF6B35', '#667EEA', '#27AE60', '#E74C3C', '#8E44AD', '#F39C12'
+                        ],
+                        borderWidth: 2,
+                        borderColor: 'rgba(255,255,255,0.8)'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                color: 'white',
+                                font: { size: 11 },
+                                padding: 15
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return context.label + ': $' + context.parsed.toFixed(2);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Bar Chart
+            const barCtx = document.getElementById('costBarChart').getContext('2d');
+            barChart = new Chart(barCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['Internet', 'Inter-AZ', 'Inter-Region', 'Enterprise', 'Hybrid', 'CDN/Gateway'],
+                    datasets: [{
+                        label: 'Monthly Cost ($)',
+                        data: [10, 5, 8, 12, 15, 8], // Initial values
+                        backgroundColor: ['#2C3E50', '#3498DB', '#27AE60', '#E74C3C', '#34495E', '#5D6D7E'],
+                        borderWidth: 1,
+                        borderColor: 'rgba(255,255,255,0.8)'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            labels: {
+                                color: 'white',
+                                font: { size: 11 }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                color: 'white',
+                                font: { size: 10 },
+                                callback: function(value) {
+                                    return '$' + value.toFixed(0);
+                                }
+                            },
+                            grid: {
+                                color: 'rgba(255,255,255,0.3)'
+                            }
+                        },
+                        x: {
+                            ticks: { 
+                                color: 'white',
+                                font: { size: 10 }
+                            },
+                            grid: { 
+                                color: 'rgba(255,255,255,0.1)' 
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Line Chart (Multi-year projection)
+            const lineCtx = document.getElementById('costLineChart').getContext('2d');
+            lineChart = new Chart(lineCtx, {
+                type: 'line',
+                data: {
+                    labels: ['Year 1', 'Year 2', 'Year 3', 'Year 4', 'Year 5'],
+                    datasets: [{
+                        label: 'Projected Annual Cost',
+                        data: [100, 120, 144, 173, 207], // Initial projection
+                        borderColor: '#2C3E50',
+                        backgroundColor: 'rgba(255, 107, 53, 0.1)',
+                        fill: true,
+                        tension: 0.4,
+                        pointBackgroundColor: '#FF6B35',
+                        pointBorderColor: 'white',
+                        pointRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            labels: {
+                                color: 'white',
+                                font: { size: 11 }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                color: 'white',
+                                font: { size: 10 },
+                                callback: function(value) {
+                                    return '$' + value.toFixed(0);
+                                }
+                            },
+                            grid: { color: 'rgba(255,255,255,0.3)' }
+                        },
+                        x: {
+                            ticks: { 
+                                color: 'white',
+                                font: { size: 10 }
+                            },
+                            grid: { color: 'rgba(255,255,255,0.1)' }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateCharts(costs, totalCost) {
+            const chartData = [
+                costs.internet,
+                costs.interAZ,
+                costs.interRegion + costs.regionalSurcharge,
+                costs.crossAccount + costs.vpcPeering + costs.transitGateway,
+                costs.directConnect + costs.vpnTransfer + costs.privateLink,
+                costs.cloudFront + costs.natGateway + costs.apiGateway + costs.s3DynamoNAT + costs.s3DynamoGateway + costs.interfaceEndpoints
+            ];
+
+            // Update pie chart
+            pieChart.data.datasets[0].data = chartData;
+            pieChart.update('active');
+
+            // Update bar chart
+            barChart.data.datasets[0].data = chartData;
+            barChart.update('active');
+
+            // Calculate projection based on growth rate
+            const growthRate = parseFloat(document.getElementById('growthRate').value || 20) / 100;
+            const projectionYears = parseInt(document.getElementById('projectionYears').value || 5);
+            
+            // Generate projection data
+            const projectionData = [];
+            const yearLabels = [];
+            let currentCost = totalCost * 12; // Convert monthly to annual
+            
+            for (let year = 1; year <= projectionYears; year++) {
+                projectionData.push(currentCost);
+                yearLabels.push(`Year ${year}`);
+                currentCost = currentCost * (1 + growthRate);
+            }
+
+            // Update line chart with projection
+            lineChart.data.labels = yearLabels;
+            lineChart.data.datasets[0].data = projectionData;
+            lineChart.data.datasets[0].label = `Annual Cost Projection (${(growthRate * 100).toFixed(1)}% growth)`;
+            lineChart.update('active');
+        }
+
+        function switchChart(chartType) {
+            // Hide all chart contents
+            document.querySelectorAll('.chart-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            
+            // Remove active class from all buttons
+            document.querySelectorAll('.chart-tab-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            // Show selected chart
+            document.getElementById(chartType + 'Chart').classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        function switchArchitecture(archType) {
+            // Hide all architecture contents
+            document.querySelectorAll('.architecture-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            
+            // Remove active class from all buttons
+            document.querySelectorAll('.arch-tab-button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            // Show selected architecture
+            document.getElementById(archType + '-arch').classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        function animateValue(elementId, start, end, duration, prefix = '') {
+            const element = document.getElementById(elementId);
+            const range = end - start;
+            const increment = range / (duration / 16);
+            let current = start;
+            
+            const timer = setInterval(() => {
+                current += increment;
+                if ((increment > 0 && current >= end) || (increment < 0 && current <= end)) {
+                    current = end;
+                    clearInterval(timer);
+                }
+                element.textContent = prefix + current.toFixed(2);
+            }, 16);
+        }
+
+
+        // Initialize slider values and calculate initial costs
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize charts
+            initializeCharts();
+            
+            // Update all slider values on load
+            document.querySelectorAll('.slider').forEach(slider => {
+                updateSliderValue(slider.id);
+            });
+            
+            
+            // Initial calculation
+            calculateCosts();
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,950 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enterprise Architecture Network - Original Simple Vision</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            min-height: 100vh;
+            color: white;
+        }
+
+        .header {
+            padding: 20px;
+            text-align: center;
+            background: rgba(0,0,0,0.3);
+            border-bottom: 1px solid rgba(255,255,255,0.2);
+        }
+
+        .header h1 {
+            font-size: 1.8rem;
+            margin-bottom: 10px;
+            color: #ffffff;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 1rem;
+        }
+
+        .controls {
+            text-align: center;
+            margin: 10px 0;
+        }
+
+        .btn {
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: 1px solid rgba(255,255,255,0.3);
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 0 5px;
+            text-decoration: none;
+            display: inline-block;
+            transition: all 0.3s ease;
+        }
+
+        .btn:hover {
+            background: rgba(255,255,255,0.3);
+            transform: translateY(-1px);
+        }
+
+        .network-container {
+            width: 100%;
+            height: calc(100vh - 140px);
+            position: relative;
+        }
+
+        .node {
+            cursor: pointer;
+            stroke: #fff;
+            stroke-width: 2px;
+            transition: all 0.3s ease;
+        }
+
+        .node.cloud {
+            stroke: #fff;
+            stroke-width: 2px;
+        }
+
+        .node.on-premises {
+            stroke: #f39c12;
+            stroke-width: 3px;
+            stroke-dasharray: 5,5;
+        }
+
+        .node:hover {
+            stroke-width: 4px;
+            transform: scale(1.1);
+        }
+
+        .link {
+            stroke: rgba(255,255,255,0.6);
+            stroke-width: 2px;
+            opacity: 0.7;
+            cursor: pointer;
+        }
+
+        .link:hover {
+            opacity: 1;
+            stroke-width: 4px;
+            stroke: #f39c12;
+        }
+
+        .link.highlighted {
+            stroke: #f39c12;
+            stroke-width: 4px;
+            opacity: 1;
+        }
+
+        .link-label {
+            font-size: 10px;
+            fill: #f39c12;
+            text-anchor: middle;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+        }
+
+        .link-label.visible {
+            opacity: 1;
+        }
+
+        .node-label {
+            font-size: 12px;
+            fill: white;
+            text-anchor: middle;
+            pointer-events: none;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+        }
+
+        .tooltip {
+            position: absolute;
+            background: rgba(0,0,0,0.9);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            z-index: 1000;
+        }
+
+        .tooltip.visible {
+            opacity: 1;
+        }
+
+        .legend {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0,0,0,0.8);
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 12px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 5px 0;
+        }
+
+        .legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .legend-icon {
+            width: 12px;
+            height: 12px;
+            margin-right: 8px;
+            border: 2px solid;
+            border-radius: 50%;
+        }
+
+        .cloud-icon {
+            border-color: #fff;
+            background: transparent;
+        }
+
+        .on-premises-icon {
+            border-color: #f39c12;
+            border-style: dashed;
+            background: transparent;
+        }
+
+        .assumptions-panel {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.9);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            font-size: 12px;
+            max-width: 350px;
+            max-height: calc(100vh - 40px);
+            overflow-y: auto;
+            border: 2px solid #3498db;
+        }
+
+        .assumptions-panel h4 {
+            color: #3498db;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+
+        .assumptions-panel ul {
+            margin: 10px 0;
+            padding-left: 15px;
+        }
+
+        .assumptions-panel li {
+            margin-bottom: 5px;
+            line-height: 1.4;
+        }
+
+        .toggle-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 12px;
+            z-index: 1001;
+        }
+
+        .toggle-btn:hover {
+            background: #2980b9;
+        }
+
+        .assumptions-panel.hidden {
+            display: none;
+        }
+
+        .cost-breakdown-panel {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.9);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            font-size: 12px;
+            max-width: 380px;
+            max-height: calc(100vh - 40px);
+            overflow-y: auto;
+            border: 2px solid #2ecc71;
+        }
+
+        .cost-breakdown-panel h4 {
+            color: #2ecc71;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+
+        .cost-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 8px 0;
+            padding: 5px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .cost-item:last-child {
+            border-bottom: none;
+            border-top: 2px solid #2ecc71;
+            margin-top: 15px;
+            padding-top: 10px;
+            font-weight: bold;
+        }
+
+        .cost-label {
+            display: flex;
+            align-items: center;
+        }
+
+        .cost-color {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .cost-breakdown-toggle {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #2ecc71;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 12px;
+            z-index: 1001;
+        }
+
+        .cost-breakdown-toggle:hover {
+            background: #27ae60;
+        }
+
+        .cost-breakdown-panel.hidden {
+            display: none;
+        }
+
+        .usage-details {
+            font-size: 10px;
+            color: #bbb;
+            margin-left: 16px;
+            margin-top: 2px;
+        }
+
+        .section-divider {
+            border-top: 1px solid rgba(255,255,255,0.2);
+            margin: 15px 0 10px 0;
+            padding-top: 10px;
+        }
+
+        .controls-panel {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(0,0,0,0.9);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            font-size: 12px;
+            max-width: 320px;
+            max-height: calc(100vh - 40px);
+            overflow-y: auto;
+            border: 2px solid #e74c3c;
+        }
+
+        .controls-panel h4 {
+            color: #e74c3c;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+
+        .controls-toggle {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: #e74c3c;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 12px;
+            z-index: 1001;
+        }
+
+        .controls-toggle:hover {
+            background: #c0392b;
+        }
+
+        .controls-panel.hidden {
+            display: none;
+        }
+
+        .slider-group {
+            margin-bottom: 15px;
+        }
+
+        .slider-label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+            font-size: 11px;
+        }
+
+        .slider {
+            width: 100%;
+            height: 4px;
+            border-radius: 2px;
+            background: #ddd;
+            outline: none;
+            opacity: 0.7;
+            transition: opacity 0.2s;
+            margin-bottom: 8px;
+        }
+
+        .slider:hover {
+            opacity: 1;
+        }
+
+        .slider::-webkit-slider-thumb {
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #e74c3c;
+            cursor: pointer;
+        }
+
+        .slider::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #e74c3c;
+            cursor: pointer;
+            border: none;
+        }
+
+        .cost-highlight {
+            background: rgba(231, 76, 60, 0.2);
+            padding: 2px 4px;
+            border-radius: 3px;
+            transition: all 0.3s ease;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🏗️ Enterprise Multi-Account Hybrid Architecture</h1>
+        <p>Interactive network showing relationships like a dictionary - click and explore connections</p>
+        <div class="controls">
+            <a href="index.html" class="btn">← Cost Estimator</a>
+            <a href="aws-egress-report.html" class="btn">📊 Report</a>
+        </div>
+    </div>
+
+    <div class="network-container">
+        <svg width="100%" height="100%" id="network-svg"></svg>
+    </div>
+
+    <div class="tooltip" id="tooltip"></div>
+
+    <button class="toggle-btn" onclick="toggleAssumptions()">📋 View Assumptions</button>
+    <button class="cost-breakdown-toggle" onclick="toggleCostBreakdown()">💰 Cost Breakdown</button>
+    
+    <div class="assumptions-panel hidden" id="assumptions-panel">
+        <h4>📋 Simplified Architecture Assumptions</h4>
+        
+        <h5 style="color: #f39c12; margin: 15px 0 8px 0;">🏗️ Infrastructure Simplifications</h5>
+        <ul>
+            <li><strong>11 Key Components:</strong> Real enterprise architectures have 100+ services - we show representative core components</li>
+            <li><strong>Logical Grouping:</strong> Each node represents service categories, not individual instances</li>
+            <li><strong>Direct Connections:</strong> Actual routing may involve multiple hops, load balancers, and proxies</li>
+            <li><strong>Regional Abstraction:</strong> Multi-AZ deployments simplified to single regional representation</li>
+            <li><strong>Reporting Hub:</strong> Centralized BI platform aggregating data from all sources for enterprise dashboards</li>
+        </ul>
+
+        <h5 style="color: #2ecc71; margin: 15px 0 8px 0;">☁️ Cloud vs On-Premises Distinctions</h5>
+        <ul>
+            <li><strong>Solid borders:</strong> AWS Cloud services (managed, scalable, pay-per-use)</li>
+            <li><strong>Dashed borders:</strong> On-premises resources (self-managed, fixed capacity)</li>
+            <li><strong>Hybrid Connectivity:</strong> Direct Connect/VPN connections simplified to logical links</li>
+            <li><strong>Data Sovereignty:</strong> On-premises may be required for compliance/regulatory reasons</li>
+        </ul>
+
+        <h5 style="color: #e74c3c; margin: 15px 0 8px 0;">💰 Cost Model Assumptions</h5>
+        <ul>
+            <li><strong>Representative Costs:</strong> Monthly estimates for typical enterprise scale</li>
+            <li><strong>Data Transfer Focus:</strong> Emphasizes egress costs, not compute or storage</li>
+            <li><strong>Steady State:</strong> Assumes consistent usage patterns, not burst scenarios</li>
+            <li><strong>US-East-1 Pricing:</strong> Based on primary AWS region pricing</li>
+        </ul>
+
+        <h5 style="color: #9b59b6; margin: 15px 0 8px 0;">🔄 Connection Simplifications</h5>
+        <ul>
+            <li><strong>Bidirectional:</strong> Actual data flows may be primarily unidirectional</li>
+            <li><strong>Protocol Agnostic:</strong> HTTPS, VPN, Direct Connect abstracted as logical connections</li>
+            <li><strong>Security Layers:</strong> Firewalls, NACLs, security groups not explicitly shown</li>
+            <li><strong>Performance Factors:</strong> Latency, bandwidth, and reliability differences simplified</li>
+        </ul>
+
+        <p style="margin-top: 15px; font-style: italic; color: #bbb;">
+            This diagram prioritizes educational clarity over architectural precision. Real implementations require detailed capacity planning, security design, and compliance considerations.
+        </p>
+    </div>
+
+    <div class="cost-breakdown-panel hidden" id="cost-breakdown-panel">
+        <h4>💰 Monthly Cost Breakdown</h4>
+        
+        <div class="cost-item">
+            <div class="cost-label">
+                <div class="cost-color" style="background: #3498db;"></div>
+                <span>Core Services (3)</span>
+            </div>
+            <span>$530</span>
+        </div>
+        <div class="usage-details">
+            Shared Services: $200 + Security Center: $150 + Reporting Hub: $180
+        </div>
+        
+        <div class="cost-item">
+            <div class="cost-label">
+                <div class="cost-color" style="background: #2ecc71;"></div>
+                <span>Production Systems (2)</span>
+            </div>
+            <span>$700</span>
+        </div>
+        <div class="usage-details">
+            Production Web: $400 + Production Data: $300
+        </div>
+        
+        <div class="cost-item">
+            <div class="cost-label">
+                <div class="cost-color" style="background: #e74c3c;"></div>
+                <span>Client Services (2)</span>
+            </div>
+            <span>$430</span>
+        </div>
+        <div class="usage-details">
+            Financial Clients: $250 + Retail Clients: $180
+        </div>
+        
+        <div class="cost-item">
+            <div class="cost-label">
+                <div class="cost-color" style="background: #f39c12;"></div>
+                <span>External Partners (2)</span>
+            </div>
+            <span>$180</span>
+        </div>
+        <div class="usage-details">
+            Payment Gateway: $100 + Analytics Partner: $80
+        </div>
+        
+        <div class="cost-item">
+            <div class="cost-label">
+                <div class="cost-color" style="background: #9b59b6;"></div>
+                <span>On-Premises (2)</span>
+            </div>
+            <span>$500</span>
+        </div>
+        <div class="usage-details">
+            Corporate HQ: $300 + Branch Network: $200
+        </div>
+        
+        <div class="section-divider">
+            <h5 style="color: #34495e; margin-bottom: 10px;">📊 Data Transfer Costs</h5>
+        </div>
+        
+        <div class="cost-item" style="border-bottom: none; margin-bottom: 5px;">
+            <div class="cost-label">
+                <div class="cost-color" style="background: #3498db;"></div>
+                <span>Internet Egress</span>
+            </div>
+            <span>$135</span>
+        </div>
+        <div class="usage-details">
+            1,500 GB @ $0.09/GB (after 100GB free tier)
+        </div>
+        
+        <div class="cost-item" style="border-bottom: none; margin-bottom: 5px;">
+            <div class="cost-label">
+                <div class="cost-color" style="background: #e67e22;"></div>
+                <span>Inter-Region</span>
+            </div>
+            <span>$45</span>
+        </div>
+        <div class="usage-details">
+            2,250 GB @ $0.02/GB (US-East to EU-West)
+        </div>
+        
+        <div class="cost-item" style="border-bottom: none; margin-bottom: 5px;">
+            <div class="cost-label">
+                <div class="cost-color" style="background: #16a085;"></div>
+                <span>Direct Connect</span>
+            </div>
+            <span>$70</span>
+        </div>
+        <div class="usage-details">
+            3,500 GB @ $0.02/GB (to Corporate HQ)
+        </div>
+        
+        <div class="cost-item" style="border-bottom: none; margin-bottom: 5px;">
+            <div class="cost-label">
+                <div class="cost-color" style="background: #8e44ad;"></div>
+                <span>VPN/Hybrid</span>
+            </div>
+            <span>$85</span>
+        </div>
+        <div class="usage-details">
+            Mixed VPN + processing: 1,800 GB avg
+        </div>
+        
+        <div class="cost-item" style="border-bottom: none; margin-bottom: 5px;">
+            <div class="cost-label">
+                <div class="cost-color" style="background: #95a5a6;"></div>
+                <span>External Partner APIs</span>
+            </div>
+            <span>$70</span>
+        </div>
+        <div class="usage-details">
+            800 GB external + 1,200 GB reporting feeds
+        </div>
+        
+        <div class="section-divider">
+            <div class="cost-item">
+                <div class="cost-label">
+                    <span><strong>Total Monthly Cost</strong></span>
+                </div>
+                <span><strong>$2,745</strong></span>
+            </div>
+        </div>
+        
+        <p style="margin-top: 10px; font-size: 10px; color: #bbb; font-style: italic;">
+            <strong>Infrastructure:</strong> $2,340 (85%) | <strong>Data Transfer:</strong> $405 (15%)<br>
+            * Based on typical enterprise usage: ~10TB/month total transfer<br>
+            * US-East-1 pricing, steady-state usage patterns<br>
+            * Includes free tiers where applicable
+        </p>
+    </div>
+
+    <div class="legend">
+        <h4 style="margin-bottom: 10px; color: white;">Service Types</h4>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #3498db;"></div>
+            <span>Core Services</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #2ecc71;"></div>
+            <span>Production</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #e74c3c;"></div>
+            <span>Client Services</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #f39c12;"></div>
+            <span>External Partners</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #9b59b6;"></div>
+            <span>Hybrid/On-Prem</span>
+        </div>
+        
+        <h4 style="margin: 15px 0 10px 0; color: white;">Infrastructure Location</h4>
+        <div class="legend-item">
+            <div class="legend-icon cloud-icon"></div>
+            <span>AWS Cloud</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-icon on-premises-icon"></div>
+            <span>On-Premises</span>
+        </div>
+    </div>
+
+    <script>
+        // Simple, educational data structure - like a dictionary of enterprise architecture
+        const architectureData = {
+            nodes: [
+                // Core Infrastructure (AWS Cloud)
+                { id: 'shared-services', name: 'Shared Services', type: 'core', region: 'US-East-1', cost: '$200/month', location: 'cloud', description: 'Central hub for common services like DNS, logging, monitoring' },
+                { id: 'security-center', name: 'Security Center', type: 'core', region: 'Global', cost: '$150/month', location: 'cloud', description: 'Identity, access management, compliance monitoring' },
+                
+                // Production Systems (AWS Cloud)
+                { id: 'prod-web', name: 'Production Web', type: 'production', region: 'US-East-1', cost: '$400/month', location: 'cloud', description: 'Customer-facing web applications and APIs' },
+                { id: 'prod-data', name: 'Production Data', type: 'production', region: 'US-East-1', cost: '$300/month', location: 'cloud', description: 'Databases, data warehouses, analytics engines' },
+                
+                // Client-Specific Services (AWS Cloud)
+                { id: 'client-financial', name: 'Financial Clients', type: 'client', region: 'US-East-1', cost: '$250/month', location: 'cloud', description: 'Banking, fintech, payment processing clients' },
+                { id: 'client-retail', name: 'Retail Clients', type: 'client', region: 'EU-West-1', cost: '$180/month', location: 'cloud', description: 'E-commerce, retail, consumer applications' },
+                
+                // Reporting and Analytics (AWS Cloud)
+                { id: 'reporting-hub', name: 'Reporting Hub', type: 'core', region: 'US-East-1', cost: '$180/month', location: 'cloud', description: 'Centralized reporting, dashboards, and business intelligence platform' },
+                
+                // External Partners (Third-party)
+                { id: 'partner-payment', name: 'Payment Gateway', type: 'partner', region: 'External', cost: '$100/month', location: 'external', description: 'Third-party payment processing integration' },
+                { id: 'partner-analytics', name: 'Analytics Partner', type: 'partner', region: 'External', cost: '$80/month', location: 'external', description: 'Business intelligence and reporting services' },
+                
+                // On-Premises Infrastructure
+                { id: 'corporate-hq', name: 'Corporate HQ', type: 'hybrid', region: 'On-Premises', cost: '$300/month', location: 'on-premises', description: 'Main corporate data center and headquarters' },
+                { id: 'branch-offices', name: 'Branch Network', type: 'hybrid', region: 'On-Premises', cost: '$200/month', location: 'on-premises', description: 'Regional offices connected via VPN' }
+            ],
+            links: [
+                // Core infrastructure connections
+                { source: 'shared-services', target: 'security-center', cost: '$20/month', label: 'Security Policies', description: 'IAM policies, compliance monitoring, audit logs' },
+                { source: 'shared-services', target: 'prod-web', cost: '$40/month', label: 'Infrastructure Services', description: 'DNS resolution, load balancing, CDN distribution' },
+                { source: 'shared-services', target: 'prod-data', cost: '$30/month', label: 'Data Services', description: 'Backup management, monitoring, log aggregation' },
+                
+                // Production to client connections
+                { source: 'prod-web', target: 'client-financial', cost: '$60/month', label: 'Financial APIs', description: 'API calls, authentication, web traffic for banking/fintech' },
+                { source: 'prod-web', target: 'client-retail', cost: '$45/month', label: 'Retail Web Traffic', description: 'Cross-region traffic for e-commerce and retail apps' },
+                { source: 'prod-data', target: 'client-financial', cost: '$50/month', label: 'Financial Data', description: 'Transaction data, analytics queries, reporting' },
+                { source: 'prod-data', target: 'client-retail', cost: '$35/month', label: 'Customer Data', description: 'User profiles, purchase history, recommendations' },
+                
+                // Reporting Hub connections
+                { source: 'prod-data', target: 'reporting-hub', cost: '$35/month', label: 'Data Warehouse', description: 'ETL processes, data aggregation, analytics queries' },
+                { source: 'client-financial', target: 'reporting-hub', cost: '$25/month', label: 'Financial Reports', description: 'Transaction summaries, compliance reports, KPI dashboards' },
+                { source: 'client-retail', target: 'reporting-hub', cost: '$20/month', label: 'Sales Analytics', description: 'Customer behavior, sales trends, inventory reports' },
+                { source: 'security-center', target: 'reporting-hub', cost: '$15/month', label: 'Security Reports', description: 'Audit logs, compliance dashboards, security metrics' },
+                { source: 'corporate-hq', target: 'reporting-hub', cost: '$30/month', label: 'Executive Reports', description: 'Cross-region data consolidation for executive dashboards' },
+                
+                // External partner integrations
+                { source: 'client-financial', target: 'partner-payment', cost: '$25/month', label: 'Payment Gateway', description: 'Credit card processing, payment validation APIs' },
+                { source: 'reporting-hub', target: 'partner-analytics', cost: '$25/month', label: 'BI Data Export', description: 'Enhanced analytics, advanced visualizations, ML insights' },
+                
+                // Hybrid connections
+                { source: 'shared-services', target: 'corporate-hq', cost: '$70/month', label: 'Direct Connect', description: 'Dedicated fiber connection for corporate applications' },
+                { source: 'corporate-hq', target: 'branch-offices', cost: '$40/month', label: 'VPN Network', description: 'Site-to-site VPN tunnels for branch connectivity' },
+                { source: 'security-center', target: 'corporate-hq', cost: '$15/month', label: 'Security Monitoring', description: 'Compliance monitoring, threat detection, audit trails' }
+            ]
+        };
+
+        // Simple color scheme
+        const colors = {
+            'core': '#3498db',
+            'production': '#2ecc71',
+            'client': '#e74c3c',
+            'partner': '#f39c12',
+            'hybrid': '#9b59b6'
+        };
+
+        // Set up the visualization
+        const svg = d3.select('#network-svg');
+        const width = svg.node().getBoundingClientRect().width;
+        const height = svg.node().getBoundingClientRect().height;
+
+        // Create simple force simulation
+        const simulation = d3.forceSimulation(architectureData.nodes)
+            .force('link', d3.forceLink(architectureData.links).id(d => d.id).distance(120))
+            .force('charge', d3.forceManyBody().strength(-400))
+            .force('center', d3.forceCenter(width / 2, height / 2))
+            .force('collision', d3.forceCollide().radius(30));
+
+        // Create links
+        const links = svg.append('g')
+            .selectAll('line')
+            .data(architectureData.links)
+            .join('line')
+            .attr('class', 'link');
+
+        // Create nodes
+        const nodes = svg.append('g')
+            .selectAll('circle')
+            .data(architectureData.nodes)
+            .join('circle')
+            .attr('class', d => `node ${d.location}`)
+            .attr('r', 20)
+            .attr('fill', d => colors[d.type])
+            .call(d3.drag()
+                .on('start', dragstarted)
+                .on('drag', dragged)
+                .on('end', dragended));
+
+        // Create node labels
+        const labels = svg.append('g')
+            .selectAll('text')
+            .data(architectureData.nodes)
+            .join('text')
+            .attr('class', 'node-label')
+            .text(d => d.name)
+            .attr('dy', 35);
+
+        // Create link labels
+        const linkLabels = svg.append('g')
+            .selectAll('text')
+            .data(architectureData.links)
+            .join('text')
+            .attr('class', 'link-label')
+            .text(d => d.label);
+
+        // Add event handlers
+        nodes.on('click', handleNodeClick)
+              .on('mouseover', handleMouseOver)
+              .on('mouseout', handleMouseOut);
+
+        links.on('mouseover', handleLinkMouseOver)
+             .on('mouseout', handleMouseOut);
+
+        // Update positions on tick
+        simulation.on('tick', () => {
+            links
+                .attr('x1', d => d.source.x)
+                .attr('y1', d => d.source.y)
+                .attr('x2', d => d.target.x)
+                .attr('y2', d => d.target.y);
+
+            nodes
+                .attr('cx', d => d.x)
+                .attr('cy', d => d.y);
+
+            labels
+                .attr('x', d => d.x)
+                .attr('y', d => d.y);
+
+            linkLabels
+                .attr('x', d => (d.source.x + d.target.x) / 2)
+                .attr('y', d => (d.source.y + d.target.y) / 2);
+        });
+
+        // Event handlers
+        function handleNodeClick(event, d) {
+            // Highlight connected nodes and links
+            const connectedNodes = new Set([d.id]);
+            const connectedLinks = architectureData.links.filter(l => 
+                l.source.id === d.id || l.target.id === d.id
+            );
+            
+            connectedLinks.forEach(l => {
+                connectedNodes.add(l.source.id);
+                connectedNodes.add(l.target.id);
+            });
+
+            // Reset all elements
+            nodes.style('opacity', 0.3);
+            links.style('opacity', 0.1);
+            labels.style('opacity', 0.3);
+
+            // Highlight connected elements
+            nodes.filter(n => connectedNodes.has(n.id)).style('opacity', 1);
+            links.filter(l => connectedLinks.includes(l)).style('opacity', 1);
+            labels.filter(n => connectedNodes.has(n.id)).style('opacity', 1);
+
+            // Show detailed info
+            showTooltip(event, d, 'node');
+        }
+
+        function handleMouseOver(event, d) {
+            showTooltip(event, d, 'node');
+        }
+
+        function handleLinkMouseOver(event, d) {
+            showTooltip(event, d, 'link');
+        }
+
+        function handleMouseOut() {
+            hideTooltip();
+            // Reset highlighting on double-click
+            document.addEventListener('dblclick', resetHighlight);
+        }
+
+        function resetHighlight() {
+            nodes.style('opacity', 1);
+            links.style('opacity', 0.7);
+            labels.style('opacity', 1);
+        }
+
+        function showTooltip(event, d, type) {
+            const tooltip = document.getElementById('tooltip');
+            let content;
+            
+            if (type === 'link') {
+                content = `
+                    <strong>${d.source.name} → ${d.target.name}</strong><br>
+                    Cost: ${d.cost}<br>
+                    ${d.description}
+                `;
+            } else {
+                const locationBadge = d.location === 'cloud' ? '☁️ AWS Cloud' : 
+                                    d.location === 'on-premises' ? '🏢 On-Premises' : '🌐 External';
+                content = `
+                    <strong>${d.name}</strong><br>
+                    Location: ${locationBadge}<br>
+                    Region: ${d.region}<br>
+                    Cost: ${d.cost}<br>
+                    ${d.description}
+                `;
+            }
+            
+            tooltip.innerHTML = content;
+            tooltip.classList.add('visible');
+            tooltip.style.left = (event.pageX + 10) + 'px';
+            tooltip.style.top = (event.pageY - 10) + 'px';
+        }
+
+        function toggleAssumptions() {
+            const panel = document.getElementById('assumptions-panel');
+            const button = document.querySelector('.toggle-btn');
+            
+            if (panel.classList.contains('hidden')) {
+                panel.classList.remove('hidden');
+                button.textContent = '❌ Hide Assumptions';
+            } else {
+                panel.classList.add('hidden');
+                button.textContent = '📋 View Assumptions';
+            }
+        }
+
+        function toggleCostBreakdown() {
+            const panel = document.getElementById('cost-breakdown-panel');
+            const button = document.querySelector('.cost-breakdown-toggle');
+            
+            if (panel.classList.contains('hidden')) {
+                panel.classList.remove('hidden');
+                button.textContent = '❌ Hide Costs';
+            } else {
+                panel.classList.add('hidden');
+                button.textContent = '💰 Cost Breakdown';
+            }
+        }
+
+        function hideTooltip() {
+            document.getElementById('tooltip').classList.remove('visible');
+        }
+
+        // Drag functions
+        function dragstarted(event, d) {
+            if (!event.active) simulation.alphaTarget(0.3).restart();
+            d.fx = d.x;
+            d.fy = d.y;
+        }
+
+        function dragged(event, d) {
+            d.fx = event.x;
+            d.fy = event.y;
+        }
+
+        function dragended(event, d) {
+            if (!event.active) simulation.alphaTarget(0);
+            d.fx = null;
+            d.fy = null;
+        }
+
+        // Stop simulation after initial layout
+        setTimeout(() => {
+            simulation.alphaTarget(0);
+        }, 5000);
+
+        // Add help text
+        setTimeout(() => {
+            if (!document.querySelector('.help-shown')) {
+                const helpDiv = document.createElement('div');
+                helpDiv.innerHTML = `
+                    <div style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); 
+                                background: rgba(0,0,0,0.9); color: white; padding: 20px; border-radius: 10px; 
+                                text-align: center; z-index: 2000;">
+                        <h3>💡 How to Explore</h3>
+                        <p><strong>Click</strong> any node to see its connections</p>
+                        <p><strong>Hover</strong> to see details</p>
+                        <p><strong>Drag</strong> to rearrange</p>
+                        <p><strong>Double-click anywhere</strong> to reset view</p>
+                        <button onclick="this.parentElement.remove()" style="margin-top: 10px; padding: 5px 15px; 
+                                background: #3498db; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                            Got it!
+                        </button>
+                    </div>
+                `;
+                helpDiv.className = 'help-shown';
+                document.body.appendChild(helpDiv);
+            }
+        }, 1000);
+    </script>
+</body>
+</html>
