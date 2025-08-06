@@ -1,0 +1,36 @@
+{
+  "lastUpdated": "Last Updated: January 2025 | Pricing reflects current AWS rates and the new 100GB free tier.",
+  "region": {
+    "name": "US-East-1 (N. Virginia)",
+    "code": "us-east-1"
+  },
+  "pricing": {
+    "internet": {
+      "freeThreshold": 100,
+      "rates": [
+        { "threshold": 10000, "rate": 0.09 },
+        { "threshold": 50000, "rate": 0.085 },
+        { "threshold": 150000, "rate": 0.07 },
+        { "threshold": 999999999, "rate": 0.05 }
+      ]
+    },
+    "interAZ": 0.01,
+    "interRegion": 0.02,
+    "crossAccount": 0.01,
+    "vpcPeering": 0.01,
+    "transitGateway": 0.02,
+    "directConnect": 0.02,
+    "vpnTransfer": 0.09,
+    "privateLink": 0.01,
+    "cloudFront": 0.085,
+    "natGateway": 0.045,
+    "apiGateway": 0.09,
+    "s3DynamoNAT": 0.135,
+    "s3DynamoGateway": 0,
+    "interfaceEndpoints": 0.01
+  },
+  "disclaimer": {
+    "show": true,
+    "text": "These are estimates only, intended for educational purposes. Actual AWS costs may vary significantly. Always consult official AWS pricing documentation."
+  }
+}

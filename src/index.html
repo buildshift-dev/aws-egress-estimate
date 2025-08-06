@@ -634,6 +634,11 @@
         <div class="header">
             <h1>🌐 AWS Egress Cost Estimator</h1>
             <p>Interactive tool to estimate data transfer costs for enterprise AWS architectures</p>
+            <p id="region-indicator" style="font-size: 0.9rem; opacity: 0.8; margin-top: 5px;">📍 Region: Loading...</p>
+            <p id="last-updated" style="font-size: 0.8rem; opacity: 0.7; margin-top: 3px; font-style: italic;">Loading update info...</p>
+            <div id="disclaimer-banner" style="background: rgba(255,193,7,0.2); border: 1px solid rgba(255,193,7,0.5); border-radius: 5px; padding: 10px; margin-top: 10px; font-size: 0.85rem;">
+                <span id="disclaimer-text">Loading disclaimer...</span>
+            </div>
         </div>
 
         <div class="main-content">
@@ -1313,6 +1318,43 @@
     </div>
 
     <script>
+        // Configuration loading
+        let config = null;
+        
+        // Load configuration on page load
+        async function loadConfig() {
+            try {
+                const response = await fetch('./config.json');
+                config = await response.json();
+                
+                // Update UI elements
+                document.getElementById('region-indicator').textContent = `📍 Region: ${config.region.name}`;
+                
+                if (config.lastUpdated) {
+                    document.getElementById('last-updated').textContent = config.lastUpdated;
+                }
+                
+                if (config.disclaimer.show) {
+                    document.getElementById('disclaimer-text').textContent = config.disclaimer.text;
+                } else {
+                    document.getElementById('disclaimer-banner').style.display = 'none';
+                }
+                
+                // Update AWS_PRICING with config values
+                if (config.pricing) {
+                    Object.assign(AWS_PRICING, config.pricing);
+                }
+            } catch (error) {
+                console.warn('Could not load config.json, using defaults');
+                document.getElementById('region-indicator').textContent = '📍 Region: US-East-1 (N. Virginia)';
+                document.getElementById('last-updated').textContent = 'Last Updated: January 2025 | Pricing reflects current AWS rates and the new 100GB free tier.';
+                document.getElementById('disclaimer-text').textContent = 'These are estimates only, intended for educational purposes. Actual AWS costs may vary significantly.';
+            }
+        }
+        
+        // Load config when page loads
+        document.addEventListener('DOMContentLoaded', loadConfig);
+
         // AWS Pricing Data (2025 rates)
         const AWS_PRICING = {
             internet: {
